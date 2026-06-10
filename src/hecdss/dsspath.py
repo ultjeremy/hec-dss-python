@@ -87,3 +87,12 @@ class DssPath:
         print("d:" + self.path.D)
         print("e:" + self.path.E)
         print("f:" + self.path.F)
+
+    def path_to_list(self) -> list[str]:
+        """
+        Convert the DSS path to a list of its components.
+
+        Returns:
+            list: A list containing the components of the DSS path.
+        """
+        return [self.A, self.B, self.C, self.D, self.E, self.F]

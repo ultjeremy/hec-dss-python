@@ -4,6 +4,7 @@ from .dateconverter import DateConverter
 from .dsspath import DssPath
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import csv
 
 class RegularTimeSeries:
     def __init__(self):
@@ -94,6 +95,46 @@ class RegularTimeSeries:
         else:
             for time, value, flag in zip(self.times, self.values, self.quality):
                 print(f"{time}, {value}, {flag}")
+
+    def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
+        """
+        Exports the RegularTimeSeries data to a .csv file.
+
+        Args:
+            file_path (str): The path to the .csv file where the data will be exported.
+            with_metadata (bool): Whether to include metadata in the exported file.
+        """
+        if len(self.times) == 0:
+            raise ValueError("Cannot export empty time series to CSV.")
+
+        with open(file_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if with_metadata:
+                id_components = DssPath(self.id).path_to_list()
+                metadata_rows = ['A', 'B', 'C', 'D', 'E', 'F']
+                for i in range(len(metadata_rows)):
+                    row = metadata_rows[i]
+                    metadata_value = id_components[i]
+                    if row == 'D': # Skip D by convention
+                        continue
+                    writer.writerow([row, '', '', metadata_value])
+                writer.writerow(['Units', '', '', self.units])
+                if len(self.quality) > 0:
+                    writer.writerow(['Type', 'Date/Time', self.data_type, "Quality"])
+                else:
+                    writer.writerow(['Type', 'Date/Time', self.data_type])
+
+            ordinate = 1
+            if len(self.quality) > 0:
+                for time, value, flag in zip(self.times, self.values, self.quality):
+                    formatted_time = time.strftime("%d%b%Y %H%M")
+                    writer.writerow([ordinate, formatted_time, value, flag])
+                    ordinate += 1
+            else:
+                for time, value in zip(self.times, self.values):
+                    formatted_time = time.strftime("%d%b%Y %H%M")
+                    writer.writerow([ordinate, formatted_time, value])
+                    ordinate += 1
 
     def _get_interval_interval(self):
         """
