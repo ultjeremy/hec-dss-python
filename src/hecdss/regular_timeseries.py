@@ -110,7 +110,10 @@ class RegularTimeSeries:
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             if with_metadata:
-                id_components = DssPath(self.id).path_to_list()
+                if self.id:
+                    id_components = DssPath(self.id).path_to_list()
+                else:
+                    id_components = [""] * 6
                 metadata_rows = ['A', 'B', 'C', 'D', 'E', 'F']
                 for i in range(len(metadata_rows)):
                     row = metadata_rows[i]
@@ -265,6 +268,65 @@ class RegularTimeSeries:
             self._interval_to_interval(x[0])
             self._interval_to_path(x[0])
             self._interval_to_times(x[0])
+
+    @staticmethod
+    def read_csv(file_path: str) -> RegularTimeSeries:
+        """
+        Reads a .csv file and creates a RegularTimeSeries instance from the data.
+
+        Args:
+            file_path (str): The path to the .csv file to read.
+        
+        Returns:
+            RegularTimeSeries: A new instance of RegularTimeSeries populated with the data from the .csv file.
+        """
+        times = []
+        values = []
+        quality = []
+        units = ""
+        data_type = ""
+        id = ""
+        path_parts = {'A': '', 'B': '', 'C': '', 'D': '', 'E': '', 'F': ''}
+        has_quality = False # flags
+        with open(file_path, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row:
+                    continue
+                first_column_item = row[0].strip()
+                if first_column_item in path_parts: # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
+                    path_parts[first_column_item] = row[len(row) - 1].strip()
+                elif first_column_item == 'Units':
+                    units = row[len(row) - 1].strip()
+                elif first_column_item == 'Type': # reached the header
+                    if len(row) >= 3:
+                        data_type = row[2].strip()
+                    if len(row) >= 4 and row[3].strip() == "Quality":
+                        has_quality = True
+                else: # data row
+                    try:
+                        # we need to deal with 2400 as a time
+                        if " 2400" in row[1].strip():
+                            time = datetime.strptime(row[1].strip().replace(" 2400", " 0000"), "%d%b%Y %H%M") + timedelta(days=1)
+                        else:
+                            time = datetime.strptime(row[1].strip(), "%d%b%Y %H%M")
+                        val_str = row[2].strip()
+                        value = float(val_str) if val_str else 0.0
+
+                        times.append(time)
+                        values.append(value)
+
+                        if has_quality and len(row) >= 4:
+                            flag = int(row[3].strip())
+                            quality.append(flag)
+
+                    except (ValueError, IndexError):
+                        continue # skip garbage rows that don't fit the expected format
+
+        id = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
+        interval = path_parts['E']
+
+        return RegularTimeSeries.create(values=values, times=times, quality=quality, units=units, data_type=data_type, interval=interval, path=id)
 
     @staticmethod
     def create(values, times=[], quality=[], units="", data_type="", interval="", start_date="", time_granularity_seconds=1, julian_base_date=0, time_zone_name="", path=None, location_info = None):

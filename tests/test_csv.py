@@ -13,6 +13,33 @@ class TestCSV(unittest.TestCase):
     def tearDown(self) -> None:
         self.test_files.cleanup()
 
+    """def test_to_csv(self):
+        path = "/regular-time-series/GAPT/FLOW/01Sep2021 - 31Oct2021/6Hour/forecast1/"
+        with HecDss(self.test_files.get_copy("examples-all-data-types.dss")) as dss:
+            rts: RegularTimeSeries = dss.get(path)
+            rts.to_csv("test.csv", with_metadata=True)
+            rts.to_csv("test_no_metadata.csv", with_metadata=False)
+
+    def test_read_csv(self):
+        regular_time_series = RegularTimeSeries.read_csv("test.csv")
+        assert regular_time_series is not None
+        self.assertEqual(regular_time_series.units, "cfs")
+        self.assertEqual(regular_time_series.data_type, "INST-VAL")
+        self.assertEqual(regular_time_series.times[0], datetime(2021, 9, 15, 7, 0))
+        regular_time_series_no_metadata = RegularTimeSeries.read_csv("test_no_metadata.csv")
+        assert regular_time_series_no_metadata is not None
+        self.assertEqual(regular_time_series.times[0], datetime(2021, 9, 15, 7, 0))
+        self.assertEqual(regular_time_series_no_metadata.units, "")
+        self.assertIsNotNone(regular_time_series_no_metadata.quality)
+
+    def test_read_24_hour_time(self):
+        '''
+        Test that a time of 24:00 is correctly parsed as the end of the day.
+        '''
+        regular_time_series = RegularTimeSeries.read_csv("24_hour_test.csv")
+        regular_time_series.print_to_console()"""
+
+
     def test_to_csv_writes_correct_structure(self):
         # Create a dummy RegularTimeSeries instance
         rts = RegularTimeSeries.create(
