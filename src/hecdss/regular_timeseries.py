@@ -104,8 +104,6 @@ class RegularTimeSeries:
             file_path (str): The path to the .csv file where the data will be exported.
             with_metadata (bool): Whether to include metadata in the exported file.
         """
-        if len(self.times) == 0:
-            raise ValueError("Cannot export empty time series to CSV.")
 
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
@@ -127,15 +125,17 @@ class RegularTimeSeries:
                 else:
                     writer.writerow(['Type', 'Date/Time', self.data_type])
 
+            time_fmt = "%d%b%Y %H%M%S" if self._needs_seconds_precision() else "%d%b%Y %H%M"
+
             ordinate = 1
             if len(self.quality) > 0:
                 for time, value, flag in zip(self.times, self.values, self.quality):
-                    formatted_time = time.strftime("%d%b%Y %H%M")
+                    formatted_time = time.strftime(time_fmt)
                     writer.writerow([ordinate, formatted_time, value, flag])
                     ordinate += 1
             else:
                 for time, value in zip(self.times, self.values):
-                    formatted_time = time.strftime("%d%b%Y %H%M")
+                    formatted_time = time.strftime(time_fmt)
                     writer.writerow([ordinate, formatted_time, value])
                     ordinate += 1
 
@@ -269,6 +269,12 @@ class RegularTimeSeries:
             self._interval_to_path(x[0])
             self._interval_to_times(x[0])
 
+    def _needs_seconds_precision(self):
+        """
+        Returns True if any datetime in the series has a non-zero seconds component
+        """
+        return any(getattr(t, "second", 0) != 0 for t in self.times)
+
     @staticmethod
     def read_csv(file_path: str) -> RegularTimeSeries:
         """
@@ -285,7 +291,6 @@ class RegularTimeSeries:
         quality = []
         units = ""
         data_type = ""
-        id = ""
         path_parts = {'A': '', 'B': '', 'C': '', 'D': '', 'E': '', 'F': ''}
         has_quality = False # flags
         with open(file_path, 'r', newline='', encoding='utf-8') as f:
@@ -305,23 +310,34 @@ class RegularTimeSeries:
                         has_quality = True
                 else: # data row
                     try:
-                        # we need to deal with 2400 as a time
-                        if " 2400" in row[1].strip():
-                            time = datetime.strptime(row[1].strip().replace(" 2400", " 0000"), "%d%b%Y %H%M") + timedelta(days=1)
+                        raw = row[1].strip()
+                        # handle 2400 as a time (roll to next day midnight)
+                        if " 2400" in raw:
+                            raw = raw.replace(" 2400", " 0000")
+                            roll_day = True
                         else:
-                            time = datetime.strptime(row[1].strip(), "%d%b%Y %H%M")
+                            roll_day = False
+                        # try seconds format first, then minute format
+                        time = None
+                        for fmt in ("%d%b%Y %H%M%S", "%d%b%Y %H%M"):
+                            try:
+                                time = datetime.strptime(raw, fmt)
+                                break
+                            except ValueError:
+                                continue
+                        if time is None:
+                            continue  # unparseable, skip
+                        if roll_day:
+                            time += timedelta(days=1)
                         val_str = row[2].strip()
                         value = float(val_str) if val_str else 0.0
-
                         times.append(time)
                         values.append(value)
-
                         if has_quality and len(row) >= 4:
                             flag = int(row[3].strip())
                             quality.append(flag)
-
                     except (ValueError, IndexError):
-                        continue # skip garbage rows that don't fit the expected format
+                        continue
 
         id = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
         interval = path_parts['E']

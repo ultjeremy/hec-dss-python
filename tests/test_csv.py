@@ -5,6 +5,7 @@ from hecdss import HecDss
 from hecdss.regular_timeseries import RegularTimeSeries
 from datetime import datetime
 
+
 class TestCSV(unittest.TestCase):
 
     def setUp(self) -> None:
@@ -13,33 +14,6 @@ class TestCSV(unittest.TestCase):
     def tearDown(self) -> None:
         self.test_files.cleanup()
 
-    """def test_to_csv(self):
-        path = "/regular-time-series/GAPT/FLOW/01Sep2021 - 31Oct2021/6Hour/forecast1/"
-        with HecDss(self.test_files.get_copy("examples-all-data-types.dss")) as dss:
-            rts: RegularTimeSeries = dss.get(path)
-            rts.to_csv("test.csv", with_metadata=True)
-            rts.to_csv("test_no_metadata.csv", with_metadata=False)
-
-    def test_read_csv(self):
-        regular_time_series = RegularTimeSeries.read_csv("test.csv")
-        assert regular_time_series is not None
-        self.assertEqual(regular_time_series.units, "cfs")
-        self.assertEqual(regular_time_series.data_type, "INST-VAL")
-        self.assertEqual(regular_time_series.times[0], datetime(2021, 9, 15, 7, 0))
-        regular_time_series_no_metadata = RegularTimeSeries.read_csv("test_no_metadata.csv")
-        assert regular_time_series_no_metadata is not None
-        self.assertEqual(regular_time_series.times[0], datetime(2021, 9, 15, 7, 0))
-        self.assertEqual(regular_time_series_no_metadata.units, "")
-        self.assertIsNotNone(regular_time_series_no_metadata.quality)
-
-    def test_read_24_hour_time(self):
-        '''
-        Test that a time of 24:00 is correctly parsed as the end of the day.
-        '''
-        regular_time_series = RegularTimeSeries.read_csv("24_hour_test.csv")
-        regular_time_series.print_to_console()"""
-
-
     def test_to_csv_writes_correct_structure(self):
         # Create a dummy RegularTimeSeries instance
         rts = RegularTimeSeries.create(
@@ -47,7 +21,7 @@ class TestCSV(unittest.TestCase):
             times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
             units="CFS",
             data_type="INST-VAL",
-            path="/A/B/C/01Sep2021/6Hour/F/"
+            path="/A/B/C/01Sep2021/6Hour/F/",
         )
 
         # Mock 'open' and capture written content
@@ -56,7 +30,9 @@ class TestCSV(unittest.TestCase):
             rts.to_csv("fake_path.csv", with_metadata=True)
 
         # Assert that open was called with correct parameters
-        mock_file.assert_called_once_with("fake_path.csv", "w", newline="", encoding="utf-8")
+        mock_file.assert_called_once_with(
+            "fake_path.csv", "w", newline="", encoding="utf-8"
+        )
 
         # Extract all written data
         handle = mock_file()
@@ -70,6 +46,106 @@ class TestCSV(unittest.TestCase):
         self.assertIn("Type,Date/Time,INST-VAL", written_data)
         self.assertIn("1,01Sep2021 0600,10.5", written_data)
         self.assertIn("2,01Sep2021 1200,20.0", written_data)
+
+    def test_to_csv_without_metadata(self):
+        """No metadata rows should be written; only data rows."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertNotIn("Units", written)
+        self.assertNotIn("Type,Date/Time", written)
+        self.assertIn("1,01Sep2021 0600,1.0", written)
+
+    def test_to_csv_empty_times(self):
+        rts = RegularTimeSeries.create(
+            values=[],
+            times=[],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake_path.csv", with_metadata=True)
+
+        handle = mock_file()
+        written_data = "".join(call.args[0] for call in handle.write.call_args_list)
+
+        self.assertIn("Units,,,CFS", written_data)
+        self.assertIn("Type,Date/Time,INST-VAL", written_data)
+        self.assertNotIn("1,", written_data)  # No data rows should be present
+
+    def test_to_csv_second_precision(self):
+        rts = RegularTimeSeries.create(
+            values=[i for i in range(10)],
+            times=[datetime(2021, 9, 1, 6, 0, i) for i in range(10)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//1Second/F/",
+        )
+
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake_path.csv", with_metadata=True)
+
+        handle = mock_file()
+        written_data = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL", written_data)
+        for i in range(10):
+            self.assertIn(f"{i + 1},01Sep2021 06000{i},", written_data)
+
+    def test_to_csv_with_quality(self):
+        """When quality is present, header gets 'Quality' col and rows get flags."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            quality=[0, 5],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=True)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL,Quality", written)
+        self.assertIn("1,01Sep2021 0600,1.0,0", written)
+        self.assertIn("2,01Sep2021 1200,2.0,5", written)
+
+    def read_from_string(self, content):
+        """Helper to run read_csv against an in-memory CSV string."""
+        m = mock_open(read_data=content)
+        with patch("builtins.open", m):
+            return RegularTimeSeries.read_csv("fake.csv")
+
+    def test_read_csv_basic(self):
+        content = (
+            "A,,,A\n"
+            "B,,,B\n"
+            "C,,,FLOW\n"
+            "E,,,6Hour\n"
+            "F,,,F\n"
+            "Units,,,CFS\n"
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+            "2,01Sep2021 1200,20.0\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.units, "CFS")
+        self.assertEqual(rts.data_type, "INST-VAL")
+        self.assertEqual(rts.values.tolist(), [10.5, 20.0])
+        self.assertEqual(rts.times[0], datetime(2021, 9, 1, 6, 0))
 
 
 if __name__ == "__main__":
