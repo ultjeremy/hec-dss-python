@@ -147,6 +147,133 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(rts.values.tolist(), [10.5, 20.0])
         self.assertEqual(rts.times[0], datetime(2021, 9, 1, 6, 0))
 
+    def test_read_csv_midnight_2400_rolls_to_next_day(self):
+        content = (
+            "E,,,1Day\n"
+            "Type,Date/Time,INST-VAL\n"
+            "1,31Aug2021 2400,10.5\n"
+            "2,01Sep2021 2400,20.0\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 0, 0), datetime(2021, 9, 2, 0, 0)])
+        self.assertEqual(rts.values.tolist(), [10.5, 20.0])
+
+    def test_read_csv_with_quality(self):
+        content = (
+            "Type,Date/Time,INST-VAL,Quality\n"
+            "1,01Sep2021 0600,10.5,0\n"
+            "2,01Sep2021 1200,20.0,5\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, 20.0])
+        self.assertEqual(rts.quality, [0, 5])
+
+    def test_read_csv_skips_malformed_rows(self):
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+            "2,not-a-date,20.0\n"
+            "3,01Sep2021 1200,not-a-number\n"
+            "4,01Sep2021 1800,30.0\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, 30.0])
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 18, 0)])
+
+    def test_read_csv_empty_file(self):
+        rts = self.read_from_string("")
+        self.assertEqual(rts.values.tolist(), [])
+        self.assertEqual(rts.times, [])
+
+    def test_read_csv_single_row_uses_path_interval(self):
+        content = (
+            "E,,,6Hour\n"
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5])
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 6, 0)])
+
+    def test_read_csv_irregular_interval_raises(self):
+        """RegularTimeSeries.read_csv expects a genuinely regular interval;
+        data implying an irregular gap (with no usable E row) is not valid
+        input for this class (that's what IrregularTimeSeries is for)."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+            "2,01Sep2021 0637,20.0\n"
+        )
+        with self.assertRaises(ValueError):
+            self.read_from_string(content)
+
+    def test_round_trip_basic(self):
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[10.5, 20.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C/01Sep2021/6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=True)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.units, "CFS")
+        self.assertEqual(result.data_type, "INST-VAL")
+        self.assertEqual(result.interval, "6Hour")
+        self.assertEqual(result.id, "/A/B/C//6Hour/F/")
+        self.assertEqual(result.values.tolist(), [10.5, 20.0])
+        self.assertEqual(
+            result.times,
+            [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+        )
+
+    def test_round_trip_with_quality(self):
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0, 3.0],
+            times=[
+                datetime(2021, 9, 1, 6, 0),
+                datetime(2021, 9, 1, 12, 0),
+                datetime(2021, 9, 1, 18, 0),
+            ],
+            quality=[0, 5, 10],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=True)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.values.tolist(), [1.0, 2.0, 3.0])
+        self.assertEqual(result.quality, [0, 5, 10])
+
+    def test_round_trip_without_metadata_infers_interval_from_times(self):
+        """With no metadata rows, units/data_type come back empty but values,
+        times, and the interval/id (inferred from the time deltas) are still
+        recovered correctly."""
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=False)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.units, "")
+        self.assertEqual(result.data_type, "")
+        self.assertEqual(result.interval, 21600)
+        self.assertEqual(result.id, "/////6Hour//")
+        self.assertEqual(result.values.tolist(), [1.0, 2.0])
+        self.assertEqual(
+            result.times,
+            [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
