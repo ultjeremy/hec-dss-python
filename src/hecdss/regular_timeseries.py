@@ -276,7 +276,7 @@ class RegularTimeSeries:
         return any(getattr(t, "second", 0) != 0 for t in self.times)
 
     @staticmethod
-    def read_csv(file_path: str) -> RegularTimeSeries:
+    def read_csv(file_path: str) -> "RegularTimeSeries":
         """
         Reads a .csv file and creates a RegularTimeSeries instance from the data.
 
