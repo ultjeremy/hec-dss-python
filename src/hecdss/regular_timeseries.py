@@ -104,40 +104,9 @@ class RegularTimeSeries:
             file_path (str): The path to the .csv file where the data will be exported.
             with_metadata (bool): Whether to include metadata in the exported file.
         """
-
-        with open(file_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            if with_metadata:
-                if self.id:
-                    id_components = DssPath(self.id).path_to_list()
-                else:
-                    id_components = [""] * 6
-                metadata_rows = ['A', 'B', 'C', 'D', 'E', 'F']
-                for i in range(len(metadata_rows)):
-                    row = metadata_rows[i]
-                    metadata_value = id_components[i]
-                    if row == 'D': # Skip D by convention
-                        continue
-                    writer.writerow([row, '', '', metadata_value])
-                writer.writerow(['Units', '', '', self.units])
-                if len(self.quality) > 0:
-                    writer.writerow(['Type', 'Date/Time', self.data_type, "Quality"])
-                else:
-                    writer.writerow(['Type', 'Date/Time', self.data_type])
-
-            time_fmt = "%d%b%Y %H%M%S" if self._needs_seconds_precision() else "%d%b%Y %H%M"
-
-            ordinate = 1
-            if len(self.quality) > 0:
-                for time, value, flag in zip(self.times, self.values, self.quality):
-                    formatted_time = time.strftime(time_fmt)
-                    writer.writerow([ordinate, formatted_time, value, flag])
-                    ordinate += 1
-            else:
-                for time, value in zip(self.times, self.values):
-                    formatted_time = time.strftime(time_fmt)
-                    writer.writerow([ordinate, formatted_time, value])
-                    ordinate += 1
+        from .dss_csv import timeseries_to_csv
+        timeseries_to_csv(self, file_path, with_metadata)
+        print(f"Wrote RegularTimeSeries to .csv file at {file_path}.")
 
     def _get_interval_interval(self):
         """

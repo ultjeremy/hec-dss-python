@@ -85,6 +85,19 @@ class IrregularTimeSeries:
         print("dataType='" + self.data_type + "'")
         for time, value in zip(self.times, self.values):
             print(f"Time: {time}, Value: {value}")
+
+    def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
+        """
+        Exports the IrregularTimeSeries object to a .csv file.
+
+        Parameters:
+            file_path (str): The path to the .csv file where the data will be exported.
+            with_metadata (bool): Whether to include metadata in the exported file.
+        """
+        from .dss_csv import timeseries_to_csv
+        timeseries_to_csv(self, file_path, with_metadata)
+        print(f"Wrote IrregularTimeSeries to .csv file at {file_path}.")
+
     @staticmethod
     def create(values, times, quality=[], units="", data_type="", interval=0, start_date="", time_granularity_seconds=1, julian_base_date=None, time_zone_name="", path=None, location_info=None):
         """
