@@ -168,6 +168,19 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(rts.values.tolist(), [10.5, 20.0])
         self.assertEqual(rts.quality, [0, 5])
 
+    def test_read_csv_with_partial_quality(self):
+        content: tuple[str] = (
+            "Type,Date/Time,INST-VAL,Quality\n"
+            "1,05Nov2004 0200,8,0\n"
+            "2,05Nov2004 0300,9\n" # missing quality!
+            "3,05Nov2004 0400,10,1\n"
+        )
+        rts = self.read_from_string(content)
+        self.assertEqual(rts.values.tolist()[0], 8)
+        self.assertEqual(rts.values.tolist()[2], 10)
+        self.assertEqual(rts.quality[0], 0)
+        self.assertEqual(rts.quality[2], 1)
+
     def test_read_csv_skips_malformed_rows(self):
         content = (
             "Type,Date/Time,INST-VAL\n"

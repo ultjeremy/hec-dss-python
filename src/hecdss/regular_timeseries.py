@@ -4,7 +4,6 @@ from .dateconverter import DateConverter
 from .dsspath import DssPath
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import csv
 
 class RegularTimeSeries:
     def __init__(self):
@@ -255,63 +254,8 @@ class RegularTimeSeries:
         Returns:
             RegularTimeSeries: A new instance of RegularTimeSeries populated with the data from the .csv file.
         """
-        times = []
-        values = []
-        quality = []
-        units = ""
-        data_type = ""
-        path_parts = {'A': '', 'B': '', 'C': '', 'D': '', 'E': '', 'F': ''}
-        has_quality = False # flags
-        with open(file_path, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if not row:
-                    continue
-                first_column_item = row[0].strip()
-                if first_column_item in path_parts: # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
-                    path_parts[first_column_item] = row[len(row) - 1].strip()
-                elif first_column_item == 'Units':
-                    units = row[len(row) - 1].strip()
-                elif first_column_item == 'Type': # reached the header
-                    if len(row) >= 3:
-                        data_type = row[2].strip()
-                    if len(row) >= 4 and row[3].strip() == "Quality":
-                        has_quality = True
-                else: # data row
-                    try:
-                        raw = row[1].strip()
-                        # handle 2400 as a time (roll to next day midnight)
-                        if " 2400" in raw:
-                            raw = raw.replace(" 2400", " 0000")
-                            roll_day = True
-                        else:
-                            roll_day = False
-                        # try seconds format first, then minute format
-                        time = None
-                        for fmt in ("%d%b%Y %H%M%S", "%d%b%Y %H%M"):
-                            try:
-                                time = datetime.strptime(raw, fmt)
-                                break
-                            except ValueError:
-                                continue
-                        if time is None:
-                            continue  # unparseable, skip
-                        if roll_day:
-                            time += timedelta(days=1)
-                        val_str = row[2].strip()
-                        value = float(val_str) if val_str else 0.0
-                        times.append(time)
-                        values.append(value)
-                        if has_quality and len(row) >= 4:
-                            flag = int(row[3].strip())
-                            quality.append(flag)
-                    except (ValueError, IndexError):
-                        continue
-
-        id = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
-        interval = path_parts['E']
-
-        return RegularTimeSeries.create(values=values, times=times, quality=quality, units=units, data_type=data_type, interval=interval, path=id)
+        from .dss_csv import timeseries_read_csv
+        return timeseries_read_csv(RegularTimeSeries, file_path)
 
     @staticmethod
     def create(values, times=[], quality=[], units="", data_type="", interval="", start_date="", time_granularity_seconds=1, julian_base_date=0, time_zone_name="", path=None, location_info = None):

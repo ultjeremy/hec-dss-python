@@ -99,6 +99,20 @@ class IrregularTimeSeries:
         print(f"Wrote IrregularTimeSeries to .csv file at {file_path}.")
 
     @staticmethod
+    def read_csv(file_path: str) -> "IrregularTimeSeries":
+        """
+        Reads a .csv file and creates an IrregularTimeSeries instance from the data.
+        
+        Parameters:
+            file_path (str): The path to the .csv file to read
+
+        Returns:
+            IrregularTimeSeries: A new instance of IrregularTimeSeries populated with the data from the .csv file.
+        """
+        from .dss_csv import timeseries_read_csv
+        return timeseries_read_csv(IrregularTimeSeries, file_path)
+
+    @staticmethod
     def create(values, times, quality=[], units="", data_type="", interval=0, start_date="", time_granularity_seconds=1, julian_base_date=None, time_zone_name="", path=None, location_info=None):
         """
          Retrieve the value at a specific date in the time-series.
