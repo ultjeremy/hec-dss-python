@@ -19,11 +19,11 @@ def timeseries_to_csv(
         with_metadata (bool): Whether to include metadata in the .csv file.
     """
     if not isinstance(series, (RegularTimeSeries, IrregularTimeSeries)):
-        raise TypeError(f"series must be a RegularTimeSeries or IrregularTimeSeries")
+        raise TypeError("series must be a RegularTimeSeries or IrregularTimeSeries")
 
     metadata_rows: list[str] = ["A", "B", "C", "D", "E", "F"]
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer: csv.writer = csv.writer(f)
+        writer = csv.writer(f)
         if with_metadata:
             if series.id:
                 id_components: list[str] = DssPath(series.id).path_to_list()
@@ -32,7 +32,9 @@ def timeseries_to_csv(
             for i in range(len(metadata_rows)):
                 row: str = metadata_rows[i]
                 metadata_value: str = id_components[i]
-                if row == "D":  # Skip D by convention # ts patter
+                if row == "D":  # Skip D by convention # ts pattern
+                    if metadata_value == "ts-pattern":
+                        print("Warning: ts-pattern skipped")
                     continue
                 writer.writerow([row, "", "", metadata_value])  # Writing metadata rows
             writer.writerow(["Units", "", "", series.units])
@@ -48,12 +50,12 @@ def timeseries_to_csv(
         ordinate: int = 1
         if len(series.quality) > 0:
             for time, value, quality in zip(series.times, series.values, series.quality):
-                formatted_time: datetime = time.strftime(time_format)
+                formatted_time: str = time.strftime(time_format)
                 writer.writerow([ordinate, formatted_time, value, quality])
                 ordinate += 1
         else:
             for time, value in zip(series.times, series.values):
-                formatted_time: datetime = time.strftime(time_format)
+                formatted_time: str = time.strftime(time_format)
                 writer.writerow([ordinate, formatted_time, value])
                 ordinate += 1
 
@@ -77,7 +79,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     has_quality: bool = False  # flags
 
     with open(path, "r", newline="", encoding="utf-8") as f:
-        reader: csv.reader = csv.reader(f)
+        reader = csv.reader(f)
         for row in reader:
             if not row:
                 continue
@@ -130,7 +132,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
                     quality_str: str = row[3].strip() if len(row) >= 4 else ""
                     quality.append(int(quality_str) if quality_str else 0)
 
-    id: str = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
+    id_path: str = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
     interval: str | int = path_parts["E"]
 
     return cls.create(
@@ -140,7 +142,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
         units=units,
         data_type=data_type,
         interval=interval,
-        path=id,
+        path=id_path,
     )
 
 
@@ -154,9 +156,6 @@ def _needs_second_precision(series: RegularTimeSeries | IrregularTimeSeries) -> 
     Returns:
         bool: whether we need seconds precision or not
     """
-    if not isinstance(series, (RegularTimeSeries, IrregularTimeSeries)):
-        raise TypeError(f"series must be a RegularTimeSeries or IrregularTimeSeries")
-
     return any(getattr(t, "second", 0) != 0 for t in series.times)
 
 
@@ -168,7 +167,7 @@ def _get_time_format(raw_time: str) -> str | None:
         raw_time (str): time in DSS string format (TODO: ISO)
 
     Returns:
-        str: time format to use to convert to datetime 
+        str | None: time format to use to convert to datetime 
     """
     dss_minutes_pattern: str = r"^\d{2}[A-Z][a-z]{2}\d{4} \d{4}$"
     dss_seconds_pattern: str = r"^\d{2}[A-Z][a-z]{2}\d{4} \d{6}$"
@@ -192,11 +191,11 @@ def _need_roll_day(time_format: str, raw_time: str) -> bool:
     Returns: 
         bool: whether or not we need to roll over to the next day
     """
-    if time_format != r"%d%b%Y %H%M" and time_format != "%d%b%Y %H%M%S":
+    if time_format != r"%d%b%Y %H%M" and time_format != r"%d%b%Y %H%M%S":
         return False  # Only DSS formats can return True
 
     # This should correctly catch if we need to roll day
-    roll_day_pattern: str = "^\d{2}[A-Z][a-z]{2}\d{4} 2400[00]*$"
+    roll_day_pattern: str = r"^\d{2}[A-Z][a-z]{2}\d{4} 2400(00)?$"
 
     if re.fullmatch(roll_day_pattern, raw_time):
         return True
