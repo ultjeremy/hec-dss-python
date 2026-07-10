@@ -200,6 +200,77 @@ class TestCSV(unittest.TestCase):
             rts.times, [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 18, 0)]
         )
 
+    def test_read_csv_seconds_precision_basic(self):
+        """Reading HHMMSS (seconds-precision) timestamps with no 2400 rollover involved.
+        Uses a 15-second gap (a standard DSS interval) so RegularTimeSeries can infer
+        the interval from the deltas without a metadata E row."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 060000,10.5\n"
+            "2,01Sep2021 060015,20.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, 20.0])
+        self.assertEqual(
+            rts.times,
+            [datetime(2021, 9, 1, 6, 0, 0), datetime(2021, 9, 1, 6, 0, 15)],
+        )
+
+    def test_read_csv_skips_wrong_length_time(self):
+        """A time field that isn't 4 (minutes) or 6 (seconds) digits doesn't match
+        either DSS format, so the row should be skipped rather than raise."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+            "2,01Sep2021 12345,20.0\n"  # 5-digit clock -- not a valid DSS format
+            "3,01Sep2021 1800,30.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, 30.0])
+        self.assertEqual(
+            rts.times, [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 18, 0)]
+        )
+
+    def test_read_csv_single_digit_day_skipped(self):
+        """The format regex requires a zero-padded 2-digit day (matching this
+        library's own writer output), so a single-digit day doesn't match
+        and the row is skipped."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,1Sep2021 0600,10.5\n"  # single-digit day
+            "2,01Sep2021 1200,20.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [20.0])
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 12, 0)])
+
+    def test_read_csv_month_case_mismatch_skipped(self):
+        """The format regex requires a title-case month abbreviation (matching
+        this library's own writer output); other casings don't match and are
+        skipped, even though datetime.strptime itself would accept them."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01SEP2021 0600,10.5\n"  # all-caps month
+            "2,01sep2021 1200,20.0\n"  # all-lowercase month
+            "3,01Sep2021 1800,30.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [30.0])
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 18, 0)])
+
+    def test_read_csv_2400_with_nonzero_seconds_not_treated_as_rollover(self):
+        """24:00:15 is not a valid DSS midnight-rollover (only 24:00:00 is) and
+        should be rejected as malformed rather than silently rolled to the
+        next day with the seconds preserved. Covers the same edge case as
+        test_year_is_2400, but for the RegularTimeSeries read path."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,15Sep2021 240015,10.5\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [])
+        self.assertEqual(rts.times, [])
+
     def test_read_csv_empty_file(self):
         rts = self.read_rts_from_string("")
         self.assertEqual(rts.values.tolist(), [])
@@ -448,11 +519,8 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(its.units, "CFS")
         self.assertEqual(its.data_type, "INST-VAL")
         self.assertEqual(its.values.tolist(), [1, 1, 1])
-        self.assertEqual(
-            its.times,
-            [datetime(2021, 9, 1, 0, 24, 0), datetime(
-                2021, 9, 2, 2, 40, 0), datetime(2021, 9, 4, 0, 0, 0)],
-        )
+        self.assertEqual(its.times, [datetime(2021, 9, 1, 0, 24, 0), datetime(
+            2021, 9, 2, 2, 40, 0), datetime(2021, 9, 4, 0, 0, 0)])
 
     def test_year_is_2400(self):
         content = (
@@ -465,16 +533,14 @@ class TestCSV(unittest.TestCase):
             "Type,Date/Time,INST-VAL\n"
             "1,01Sep2400 000000,1\n"
             "2,01Sep2400 240000,1\n"
+            "3,01Sep2400 240015,1\n"  # Should not be accepted
+            "4,01Sep2400 24000,1\n"  # Should not be accepted
         )
         its = self.read_its_from_string(content)
         self.assertEqual(its.units, "CFS")
         self.assertEqual(its.data_type, "INST-VAL")
         self.assertEqual(its.values.tolist(), [1, 1])
-        self.assertEqual(
-            its.times,
-            [datetime(2400, 9, 1, 0, 0, 0), datetime(
-                2400, 9, 2, 0, 0, 0)],
-        )
+        self.assertEqual(its.times, [datetime(2400, 9, 1, 0, 0, 0), datetime(2400, 9, 2, 0, 0, 0)])
 
 
 if __name__ == "__main__":

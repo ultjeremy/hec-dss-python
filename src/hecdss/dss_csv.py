@@ -114,6 +114,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
                     time: datetime = datetime.strptime(raw_time, time_format)
                 except ValueError:
                     continue  # Skip a malformed date
+
                 if roll_day:  # Convert a 24:00 time to 00:00 of the next day
                     time += timedelta(days=1)
 
@@ -159,7 +160,7 @@ def _needs_second_precision(series: RegularTimeSeries | IrregularTimeSeries) -> 
     return any(getattr(t, "second", 0) != 0 for t in series.times)
 
 
-def _get_time_format(raw_time: str) -> str:
+def _get_time_format(raw_time: str) -> str | None:
     """
     Given a raw DSS time string, detect and return the correct time format, whether it be minutes or seconds precision.
 
@@ -176,6 +177,8 @@ def _get_time_format(raw_time: str) -> str:
         return "%d%b%Y %H%M"
     elif re.fullmatch(dss_seconds_pattern, raw_time):
         return "%d%b%Y %H%M%S"
+    else:
+        return None
 
 
 def _need_roll_day(time_format: str, raw_time: str) -> bool:
@@ -189,11 +192,11 @@ def _need_roll_day(time_format: str, raw_time: str) -> bool:
     Returns: 
         bool: whether or not we need to roll over to the next day
     """
-    if time_format != "%d%b%Y %H%M" and time_format != "%d%b%Y %H%M%S":
-        return False  # Only DSS formats can return False
+    if time_format != r"%d%b%Y %H%M" and time_format != "%d%b%Y %H%M%S":
+        return False  # Only DSS formats can return True
 
     # This should correctly catch if we need to roll day
-    roll_day_pattern: str = "^\d{2}[A-Z][a-z]{2}\d{4} 2400\d*$"
+    roll_day_pattern: str = "^\d{2}[A-Z][a-z]{2}\d{4} 2400[00]*$"
 
     if re.fullmatch(roll_day_pattern, raw_time):
         return True
