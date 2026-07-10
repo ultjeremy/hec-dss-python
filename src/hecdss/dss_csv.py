@@ -1,11 +1,15 @@
 import csv
+import re
 from datetime import datetime, timedelta
-from .regular_timeseries import RegularTimeSeries
-from .irregular_timeseries import IrregularTimeSeries
+
 from .dsspath import DssPath
+from .irregular_timeseries import IrregularTimeSeries
+from .regular_timeseries import RegularTimeSeries
 
 
-def timeseries_to_csv(series: RegularTimeSeries | IrregularTimeSeries, path: str, with_metadata: bool) -> None:
+def timeseries_to_csv(
+    series: RegularTimeSeries | IrregularTimeSeries, path: str, with_metadata: bool
+) -> None:
     """
     Exports a timeseries (either regular or irregular) to a .csv file.
 
@@ -17,8 +21,8 @@ def timeseries_to_csv(series: RegularTimeSeries | IrregularTimeSeries, path: str
     if not isinstance(series, (RegularTimeSeries, IrregularTimeSeries)):
         raise TypeError(f"series must be a RegularTimeSeries or IrregularTimeSeries")
 
-    metadata_rows: list[str] = ['A', 'B', 'C', 'D', 'E', 'F']
-    with open(path, 'w', newline='', encoding='utf-8') as f:
+    metadata_rows: list[str] = ["A", "B", "C", "D", "E", "F"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
         writer: csv.writer = csv.writer(f)
         if with_metadata:
             if series.id:
@@ -28,16 +32,18 @@ def timeseries_to_csv(series: RegularTimeSeries | IrregularTimeSeries, path: str
             for i in range(len(metadata_rows)):
                 row: str = metadata_rows[i]
                 metadata_value: str = id_components[i]
-                if row == 'D': # Skip D by convention # ts patter
+                if row == "D":  # Skip D by convention # ts patter
                     continue
-                writer.writerow([row, '', '', metadata_value]) # Writing metadata rows
-            writer.writerow(['Units', '', '', series.units])
+                writer.writerow([row, "", "", metadata_value])  # Writing metadata rows
+            writer.writerow(["Units", "", "", series.units])
             if len(series.quality) > 0:
-                writer.writerow(['Type', 'Date/Time', series.data_type, 'Quality']) # Write column names with quality
+                # Write column names with quality
+                writer.writerow(["Type", "Date/Time", series.data_type, "Quality"])
             else:
-                writer.writerow(['Type', 'Date/Time', series.data_type]) # Write column names without quality
-            
-        time_format: str = "%d%b%Y %H%M%S" if _needs_second_precision(series) else "%d%b%Y %H%M"
+                # Write column names without quality
+                writer.writerow(["Type", "Date/Time", series.data_type])
+
+        time_format: str = ("%d%b%Y %H%M%S" if _needs_second_precision(series) else "%d%b%Y %H%M")
 
         ordinate: int = 1
         if len(series.quality) > 0:
@@ -65,68 +71,76 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     """
     if cls not in (RegularTimeSeries, IrregularTimeSeries):
         raise TypeError("cls must be RegularTimeSeries or IrregularTimeSeries")
-    
+
     times, values, quality, units, data_type = [], [], [], "", ""
-    path_parts: dict[str, str] = {'A': '', 'B': '', 'C': '', 'D': '', 'E': '', 'F': ''}
-    has_quality: bool = False # flags
+    path_parts: dict[str, str] = {"A": "", "B": "", "C": "", "D": "", "E": "", "F": ""}
+    has_quality: bool = False  # flags
 
-    _DSS_TIME_FORMATS_BY_LENGTH: dict[int, str] = {
-        14: "%d%b%Y %H%M",
-        16: "%d%b%Y %H%M%S" # Numbers subject to change if we add ISO support
-    }
-
-    with open(path, 'r', newline='', encoding='utf-8') as f:
+    with open(path, "r", newline="", encoding="utf-8") as f:
         reader: csv.reader = csv.reader(f)
         for row in reader:
             if not row:
                 continue
-            first_column_item: str = row[0].strip() # first item in the row we grabbed, the first column's item
-            if first_column_item in path_parts: # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
-                path_parts[first_column_item] = row[-1].strip() # last cell in csv row (convention)
-            elif first_column_item == 'Units':
+            # first item in the row we grabbed, the first column's item
+            first_column_item: str = row[0].strip()
+            # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
+            if first_column_item in path_parts:
+                path_parts[first_column_item] = row[-1].strip()  # last cell in csv row (convention)
+            elif first_column_item == "Units":
                 units = row[-1].strip()
-            elif first_column_item == 'Type': # reached the header
-                if len(row) >= 3: # ['Type', 'Date/Time', data_type, ...potentially more]
+            elif first_column_item == "Type":  # reached the header
+                if len(row) >= 3:  # ['Type', 'Date/Time', data_type, ...potentially more]
                     data_type = row[2].strip()
-                if len(row) >= 4 and row[3].strip() == 'Quality': # ['Type', 'Date/Time', data_type, 'Quality', ...potentially more] 
+                # ['Type', 'Date/Time', data_type, 'Quality', ...potentially more]
+                if len(row) >= 4 and row[3].strip() == "Quality":
                     has_quality = True
-            else: # Data row
+            else:  # Data row
                 if len(row) < 3:
-                    continue # csv is malformed, something is missing
+                    continue  # csv is malformed, something is missing
 
                 raw_time: str = row[1].strip()
-                roll_day: bool = "2400" in raw_time # Do we need to roll over the day date? Yes if time is 2400
-                if roll_day: # 2400 isn't a valid hour, so roll it to 0000 before parsing and add a day after
-                    raw_time = raw_time.replace(" 2400", " 0000")
-
-                time_format: str = _DSS_TIME_FORMATS_BY_LENGTH.get(len(raw_time)) # Time format is determined by length of raw_time
+                # Time format is determined by length of raw_time
+                time_format: str = _get_time_format(raw_time)
                 if time_format is None:
                     # Time format is unrecognized
                     continue
 
+                # Do we need to roll over the day date? Yes if time is 2400
+                roll_day: bool = _need_roll_day(time_format, raw_time)
+                if roll_day:  # 2400 isn't a valid hour, so roll it to 0000 before parsing and add a day after
+                    raw_time = raw_time.replace(" 2400", " 0000")
+
                 try:
                     time: datetime = datetime.strptime(raw_time, time_format)
                 except ValueError:
-                    continue # Skip a malformed date
-                if roll_day: # Convert a 24:00 time to 00:00 of the next day
+                    continue  # Skip a malformed date
+                if roll_day:  # Convert a 24:00 time to 00:00 of the next day
                     time += timedelta(days=1)
 
                 value_str: str = row[2].strip()
                 try:
                     value: float = float(value_str) if value_str else 0.0
                 except ValueError:
-                    continue # Skip a malformed value
+                    continue  # Skip a malformed value
 
                 times.append(time)
                 values.append(value)
-                if has_quality: # Always keep quality index-aligned with values, defaulting a missing cell to 0
+                if has_quality:  # Always keep quality index-aligned with values, defaulting a missing cell to 0
                     quality_str: str = row[3].strip() if len(row) >= 4 else ""
                     quality.append(int(quality_str) if quality_str else 0)
 
     id: str = f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
-    interval: str | int = path_parts['E']
+    interval: str | int = path_parts["E"]
 
-    return cls.create(values=values, times=times, quality=quality, units=units, data_type=data_type, interval=interval, path=id)
+    return cls.create(
+        values=values,
+        times=times,
+        quality=quality,
+        units=units,
+        data_type=data_type,
+        interval=interval,
+        path=id,
+    )
 
 
 def _needs_second_precision(series: RegularTimeSeries | IrregularTimeSeries) -> bool:
@@ -143,3 +157,45 @@ def _needs_second_precision(series: RegularTimeSeries | IrregularTimeSeries) -> 
         raise TypeError(f"series must be a RegularTimeSeries or IrregularTimeSeries")
 
     return any(getattr(t, "second", 0) != 0 for t in series.times)
+
+
+def _get_time_format(raw_time: str) -> str:
+    """
+    Given a raw DSS time string, detect and return the correct time format, whether it be minutes or seconds precision.
+
+    Parameters:
+        raw_time (str): time in DSS string format (TODO: ISO)
+
+    Returns:
+        str: time format to use to convert to datetime 
+    """
+    dss_minutes_pattern: str = r"^\d{2}[A-Z][a-z]{2}\d{4} \d{4}$"
+    dss_seconds_pattern: str = r"^\d{2}[A-Z][a-z]{2}\d{4} \d{6}$"
+
+    if re.fullmatch(dss_minutes_pattern, raw_time):
+        return "%d%b%Y %H%M"
+    elif re.fullmatch(dss_seconds_pattern, raw_time):
+        return "%d%b%Y %H%M%S"
+
+
+def _need_roll_day(time_format: str, raw_time: str) -> bool:
+    """
+    Primarily to deal with the DSS time sometimes being "2400" and needing to roll over.
+
+    Parameters:
+        time_format (str): time format being used
+        raw_time (str): raw time string extracted from csv
+
+    Returns: 
+        bool: whether or not we need to roll over to the next day
+    """
+    if time_format != "%d%b%Y %H%M" and time_format != "%d%b%Y %H%M%S":
+        return False  # Only DSS formats can return False
+
+    # This should correctly catch if we need to roll day
+    roll_day_pattern: str = "^\d{2}[A-Z][a-z]{2}\d{4} 2400\d*$"
+
+    if re.fullmatch(roll_day_pattern, raw_time):
+        return True
+
+    return False

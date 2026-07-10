@@ -15,5 +15,5 @@ libhecdss.so
 .idea
 .ipynb_checkpoints
 .venv/
-test_no_metadata.csv
-test.csv
+tests/csv_testing/
+
