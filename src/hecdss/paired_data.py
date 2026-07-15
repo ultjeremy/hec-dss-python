@@ -7,15 +7,16 @@ class PairedData:
         """
         Initialize a PairedData object with default values.
         """
-        self.id = None
-        self.ordinates = np.empty(0)
-        self.values = np.empty(0)
-        self.labels = []
-        self.type_independent = ""
-        self.type_dependent = ""
-        self.units_independent = ""
-        self.units_dependent = ""
-        self.time_zone_name = ""
+        self.id: str = None
+        self.ordinates: np.ndarray = np.empty(0)
+        # ROW-MAJOR, each sublist represents the values for each ordinate
+        self.values: np.ndarray = np.empty(0)
+        self.labels: list[str] = []
+        self.type_independent: str = ""
+        self.type_dependent: str = ""
+        self.units_independent: str = ""
+        self.units_dependent: str = ""
+        self.time_zone_name: str = ""
         self.location_info = None
 
     def curve_count(self):
@@ -25,7 +26,22 @@ class PairedData:
         Returns:
         int: The number of curves.
         """
-        return len(self.values)
+        if len(self.values) == 0:
+            return 0
+        # values is ROW-MAJOR, each sublist represents a row of curve values for each ordinate
+        return len(self.values[0])
+
+    def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
+        """
+        Exports the PairedData instance to a .csv file.
+
+        Parameters:
+            file_path (str): The path to the .csv file where the data will be exported.
+            with_metadata (bool): Whether to include metadata in the exported file.
+        """
+        from .dss_csv import paired_data_to_csv
+        paired_data_to_csv(self, file_path, with_metadata)
+        print(f"Wrote PairedData to .csv file at {file_path}.")
 
     # def to_data_frame(self, include_index=False):
     #     """
@@ -46,6 +62,20 @@ class PairedData:
     #         data["index"] = list(range(1, len(self.ordinates) + 1))
     #
     #     return pd.DataFrame(data)
+
+    @staticmethod
+    def read_csv(file_path: str) -> "PairedData":
+        """
+        Reads a .csv file and creates an PairedData instance from the data.
+
+        Parameters:
+            file_path (str): The path to the .csv file to read
+
+        Returns:
+            PairedData: A new instance of PairedData populated with the data from the .csv file.
+        """
+        from .dss_csv import paired_data_read_csv
+        return paired_data_read_csv(PairedData, file_path)
 
     @staticmethod
     def create(x_values, y_values, labels=[], x_units="", x_type="", y_units="", y_type="", time_zone_name="", path=None):

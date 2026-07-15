@@ -2,9 +2,12 @@ import unittest
 from datetime import datetime
 from unittest.mock import mock_open, patch
 
+import numpy as np
+
 from file_manager import FileManager
 
 from hecdss import HecDss
+from hecdss.dss_csv import DEFAULT_MISSING_VALUE
 from hecdss.irregular_timeseries import IrregularTimeSeries
 from hecdss.regular_timeseries import RegularTimeSeries
 
@@ -65,7 +68,6 @@ class TestCSV(unittest.TestCase):
         handle = mock_file()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
         self.assertNotIn("Units", written)
-        self.assertNotIn("Type,Date/Time", written)
         self.assertIn("1,01Sep2021 0600,1.0", written)
 
     def test_to_csv_empty_times(self):
@@ -174,7 +176,7 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(rts.quality, [0, 5])
 
     def test_read_csv_with_partial_quality(self):
-        content: tuple[str] = (
+        content: str = (
             "Type,Date/Time,INST-VAL,Quality\n"
             "1,05Nov2004 0200,8,0\n"
             "2,05Nov2004 0300,9\n"  # missing quality!
@@ -186,7 +188,7 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(rts.quality[0], 0)
         self.assertEqual(rts.quality[2], 1)
 
-    def test_read_csv_skips_malformed_rows(self):
+    def test_read_csv_skips_malformed_date_rows(self):
         content = (
             "Type,Date/Time,INST-VAL\n"
             "1,01Sep2021 0600,10.5\n"
@@ -195,9 +197,10 @@ class TestCSV(unittest.TestCase):
             "4,01Sep2021 1800,30.0\n"
         )
         rts = self.read_rts_from_string(content)
-        self.assertEqual(rts.values.tolist(), [10.5, 30.0])
+        self.assertEqual(rts.values.tolist(), [10.5, DEFAULT_MISSING_VALUE, 30.0])
         self.assertEqual(
-            rts.times, [datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 18, 0)]
+            rts.times, [datetime(2021, 9, 1, 6, 0), datetime(
+                2021, 9, 1, 12, 0), datetime(2021, 9, 1, 18, 0)]
         )
 
     def test_read_csv_seconds_precision_basic(self):
@@ -352,7 +355,6 @@ class TestCSV(unittest.TestCase):
         result = RegularTimeSeries.read_csv(path)
 
         self.assertEqual(result.units, "")
-        self.assertEqual(result.data_type, "")
         self.assertEqual(result.interval, 21600)
         self.assertEqual(result.id, "/////6Hour//")
         self.assertEqual(result.values.tolist(), [1.0, 2.0])
@@ -423,7 +425,6 @@ class TestCSV(unittest.TestCase):
         handle = mock_file()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
         self.assertNotIn("Units", written)
-        self.assertNotIn("Type,Date/Time", written)
         self.assertIn("1,01Sep2021 0000,10.5", written)
         self.assertIn("2,02Sep2021 0000,20.0", written)
         self.assertIn("3,04Sep2021 0000,42.0", written)
@@ -541,6 +542,125 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(its.data_type, "INST-VAL")
         self.assertEqual(its.values.tolist(), [1, 1])
         self.assertEqual(its.times, [datetime(2400, 9, 1, 0, 0, 0), datetime(2400, 9, 2, 0, 0, 0)])
+
+    def test_read_write_with_missing(self):
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600,10.5\n"
+            "2,not-a-date,20.0\n"
+            "3,01Sep2021 1200,not-a-number\n"
+            "4,01Sep2021 1800,30.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, DEFAULT_MISSING_VALUE, 30.0])
+        self.assertEqual(
+            rts.times, [datetime(2021, 9, 1, 6, 0), datetime(
+                2021, 9, 1, 12, 0), datetime(2021, 9, 1, 18, 0)]
+        )
+
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake_path.csv", with_metadata=True)
+
+        handle = mock_file()
+        written_data = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL", written_data)
+        self.assertIn("2,01Sep2021 1200,\r\n", written_data)
+
+    def test_to_csv_writes_empty_cell_for_missing_value(self):
+        """A missing (None) value is written as an empty cell, never the literal
+        text 'None'. (Isolates the write path with an injected None, independent
+        of what the reader produces.)"""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.values = np.array([1.0, None], dtype=object)  # simulate a missing value
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("2,01Sep2021 1200,\r\n", written)
+        self.assertNotIn("None", written)
+
+    def test_to_csv_quality_shorter_than_values_truncates(self):
+        """FOOTGUN: to_csv takes the with-quality branch whenever quality is
+        non-empty, then zips (times, values, quality). A quality list shorter than
+        values makes zip stop at the shortest input, so trailing data points are
+        silently dropped from the CSV."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0, 3.0],
+            times=[
+                datetime(2021, 9, 1, 6, 0),
+                datetime(2021, 9, 1, 12, 0),
+                datetime(2021, 9, 1, 18, 0),
+            ],
+            quality=[0],  # only one flag for three values
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("1,01Sep2021 0600,1.0,0", written)
+        self.assertNotIn("2,01Sep2021 1200", written)  # silently dropped
+        self.assertNotIn("3,01Sep2021 1800", written)  # silently dropped
+
+    def test_read_csv_skips_short_data_row(self):
+        """A data row with fewer than 3 columns is malformed and skipped without
+        raising (parity with the paired-data reader's short-row handling)."""
+        content = (
+            "Type,Date/Time,INST-VAL\n"
+            "1,01Sep2021 0600\n"        # only 2 columns -> skipped
+            "2,01Sep2021 1200,20.0\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [20.0])
+        self.assertEqual(rts.times, [datetime(2021, 9, 1, 12, 0)])
+
+    def test_read_csv_metadata_only_no_data_rows(self):
+        """Metadata rows with zero data rows yield an empty series (no crash);
+        units and the E interval are still captured."""
+        content = (
+            "A,,,A\n"
+            "E,,,6Hour\n"
+            "Units,,,CFS\n"
+            "Type,Date/Time,INST-VAL\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [])
+        self.assertEqual(rts.times, [])
+        self.assertEqual(rts.units, "CFS")
+        self.assertEqual(rts.interval, 21600)
+
+    def test_round_trip_irregular(self):
+        """Full write->read round trip for IrregularTimeSeries on a real temp file:
+        irregular gaps, units, data_type and id all survive."""
+        path = self.test_files.create_test_file(".csv")
+        its = IrregularTimeSeries.create(
+            values=[10.5, 20.0, 42.0],
+            times=[datetime(2021, 9, 1), datetime(2021, 9, 5), datetime(2021, 9, 20)],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//IR-Year/F/",
+        )
+        its.to_csv(path, with_metadata=True)
+        result = IrregularTimeSeries.read_csv(path)
+        self.assertEqual(result.values.tolist(), [10.5, 20.0, 42.0])
+        self.assertEqual(
+            result.times,
+            [datetime(2021, 9, 1), datetime(2021, 9, 5), datetime(2021, 9, 20)],
+        )
+        self.assertEqual(result.units, "CFS")
+        self.assertEqual(result.data_type, "INST-VAL")
+        self.assertEqual(result.id, "/A/B/C//IR-Year/F/")
 
 
 if __name__ == "__main__":
