@@ -757,6 +757,9 @@ class _Native:
             times: List[int],
             values: List[float],
             arraySize: str,
+            cnotesBuffer: str,
+            cnoteSize: int,
+            notes: List[str],
             numberValuesRead: List[int],
             quality: List[int],
             qualityLength: int,
@@ -781,6 +784,8 @@ class _Native:
             POINTER(c_int),  # timeArray
             POINTER(c_double),  # valueArray
             c_int,  # arraySize
+            c_char_p,  # cnotesBuffer
+            c_int,  # cnoteSize
             POINTER(c_int),  # numberValuesRead
             POINTER(c_int),  # quality
             c_int,  # qualityLength
@@ -800,6 +805,8 @@ class _Native:
         c_values = (c_double * arraySize)()
         c_numberValuesRead = c_int(0)
         size = qualityLength * arraySize
+
+        c_cnotesBuffer = create_string_buffer(arraySize * cnoteSize)
 
         c_quality = (c_int * size)()
         c_julianBaseDate = c_int(0)
@@ -827,6 +834,8 @@ class _Native:
             c_times,
             c_values,
             c_arraySize,
+            c_cnotesBuffer,
+            cnoteSize,
             byref(c_numberValuesRead),
             c_quality,
             qualityLength,
@@ -846,6 +855,11 @@ class _Native:
         values.extend(list(c_values[: c_numberValuesRead.value]))
         quality.clear()
         quality.extend(list(c_quality[: c_numberValuesRead.value]))
+        notes.clear()
+        raw = c_cnotesBuffer.raw
+        for i in range(c_numberValuesRead.value):
+            chunk = raw[i * cnoteSize: (i + 1) * cnoteSize]
+            notes.append(chunk.split(b"\x00", 1)[0].decode("utf-8"))
         units[0] = c_units.value.decode("utf-8")
         dataType[0] = c_dataType.value.decode("utf-8")
         julianBaseDate[0] = c_julianBaseDate.value
@@ -861,6 +875,8 @@ class _Native:
             startTime,
             valueArray,
             qualityArray,
+            notes,
+            cnoteSize,
             saveAsFloat,
             units,
             dataType,
@@ -878,6 +894,8 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
+            c_char_p,  # cnotesBuffer
+            c_int,  # cnoteSize
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
@@ -895,6 +913,19 @@ class _Native:
         c_valueArray = (c_double * len(valueArray))(*valueArray)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
+        if notes:
+            c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
+            for i, note in enumerate(notes):
+                # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
+                encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
+                offset = i * cnoteSize
+                # write encoded bytes of encoded starting at offset
+                c_cnotesBuffer[offset: offset + len(encoded)] = encoded
+            c_cnoteSize = cnoteSize
+        else:
+            c_cnotesBuffer = None
+            c_cnoteSize = 0
+
         return self.dll.hec_dss_tsStoreRegular(
             self.handle,
             c_pathname,
@@ -904,6 +935,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
+            c_cnotesBuffer,
+            c_cnoteSize,
             int(saveAsFloat),
             c_units,
             c_type,
@@ -919,6 +952,8 @@ class _Native:
             timeGranularitySeconds,
             valueArray,
             qualityArray,
+            notes,
+            cnoteSize,
             saveAsFloat,
             units,
             dataType,
@@ -926,8 +961,8 @@ class _Native:
             storageFlag,
     ):
 
-        self.dll.hec_dss_tsStoreIregular.restype = c_int
-        self.dll.hec_dss_tsStoreIregular.argtypes = [
+        self.dll.hec_dss_tsStoreIrregular.restype = c_int
+        self.dll.hec_dss_tsStoreIrregular.argtypes = [
             c_void_p,  # dss (void*)
             c_char_p,  # pathname (const char*)
             c_char_p,  # startDateBase (const char*)
@@ -937,6 +972,8 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
+            c_char_p,  # cnotesBuffer (char*)
+            c_int,  # cnoteSize (int)
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
@@ -954,7 +991,20 @@ class _Native:
         c_times = (c_int * len(times))(*times)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
-        return self.dll.hec_dss_tsStoreIregular(
+        if notes:
+            c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
+            for i, note in enumerate(notes):
+                # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
+                encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
+                offset = i * cnoteSize
+                # write encoded bytes of encoded starting at offset
+                c_cnotesBuffer[offset: offset + len(encoded)] = encoded
+            c_cnoteSize = cnoteSize
+        else:
+            c_cnotesBuffer = None
+            c_cnoteSize = 0
+
+        return self.dll.hec_dss_tsStoreIrregular(
             self.handle,
             c_pathname,
             c_startDateBase,
@@ -964,6 +1014,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
+            c_cnotesBuffer,
+            c_cnoteSize,
             int(saveAsFloat),
             c_units,
             c_type,

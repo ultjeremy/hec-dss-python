@@ -55,21 +55,16 @@ class TestBasics(unittest.TestCase):
             for ds in catalog:
                 print(ds.recType, ds)
 
-
     def test_catalog_get(self):
         with HecDss(self.test_files.get_copy("sample7.dss")) as dss:
             catalog = dss.get_catalog()
             ts = dss.get(catalog.items[0])
-
 
     def test_with_block(self):
 
         with HecDss(self.test_files.get_copy("sample7.dss")) as dss:
             catalog = dss.get_catalog()
             ts = dss.get(catalog.items[0])
-
-
-
 
     def test_new_catalog(self):
         rawPaths = [
@@ -82,7 +77,6 @@ class TestBasics(unittest.TestCase):
         recordType = [100, 100, 100, 100, 100]
         c = Catalog(rawPaths, recordType)
         c.print()
-
 
     def test_paired_data(self):
         """
@@ -122,7 +116,7 @@ class TestBasics(unittest.TestCase):
         with HecDss(self.test_files.get_copy("missing_data.dss")) as dss:
             print("record count = " + str(dss.record_count()))
             tsc = dss.get("/CUMBERLAND RIVER/CUMBERLAND FALLS/FLOW//30Minute/MISSING/", datetime(2020, 1, 3, 11, 0),
-                        datetime(2020, 1, 13, 0, 0))
+                          datetime(2020, 1, 13, 0, 0))
             tsc.print_to_console()
 
     # values = ts.values
@@ -204,13 +198,13 @@ class TestBasics(unittest.TestCase):
             t1 = datetime(1879, 1, 1)
             t2 = datetime(1885, 1, 1)
             dss.delete(path, False, t1, t2)
-            assert (not("//SACRAMENTO/PRECIP-INC/01Jan1882/1Day/OBS/" in dss.get_catalog().uncondensed_paths))
+            assert (not ("//SACRAMENTO/PRECIP-INC/01Jan1882/1Day/OBS/" in dss.get_catalog().uncondensed_paths))
 
     def test_Read_TS_Pattern_Regular(self):
         with HecDss(self.test_files.get_copy("Depth_Area_01.dss")) as dss:
             path = "//010010-B/FLOW-UNIT GRAPH/TS-Pattern/5Minute/DAA:Depth-Area 01>010005-C/"
             tsc = dss.get(path)
-            assert(len(tsc.values) > 0)
+            assert (len(tsc.values) > 0)
 
     def test_Write_TS_Pattern_Regular(self):
         with HecDss(self.test_files.get_copy("Depth_Area_01.dss")) as dss:
@@ -221,13 +215,62 @@ class TestBasics(unittest.TestCase):
             tsc.start_date = tsc.start_date.replace(year=2023)
             dss.put(tsc)
             tsc2 = dss.get(tsc.id)
-            assert(len(tsc2.values) > 0)
+            assert (len(tsc2.values) > 0)
+
+    def test_write_regular_timeseries_with_notes(self):
+        with HecDss(self.test_files.get_copy("sample7.dss")) as dss:
+            t1 = datetime(2005, 1, 1)
+            t2 = datetime(2005, 1, 4)
+            tsc = dss.get("//SACRAMENTO/PRECIP-INC//1Day/OBS/", t1, t2)
+            tsc.id = "//SACRAMENTO/PRECIP-INC/01Jan2005/1Day/OBS-notes/"
+            tsc.notes = ["" for _ in tsc.values]
+            tsc.notes[1] = "manual override"
+
+            dss.put(tsc)
+            tsc2 = dss.get(tsc.id, t1, t2)
+
+            self.assertEqual(tsc.notes, tsc2.notes)
+
+    def test_write_regular_timeseries_with_quality(self):
+        """
+        Quality flags written on a RegularTimeSeries survive a put/get round trip.
+        """
+        with HecDss(self.test_files.get_copy("sample7.dss")) as dss:
+            t1 = datetime(2005, 1, 1)
+            t2 = datetime(2005, 1, 4)
+            tsc = dss.get("//SACRAMENTO/PRECIP-INC//1Day/OBS/", t1, t2)
+            tsc.id = "//SACRAMENTO/PRECIP-INC/01Jan2005/1Day/OBS-quality/"
+            tsc.quality = [0, 1, 2, 3][:len(tsc.values)]
+
+            dss.put(tsc)
+            tsc2 = dss.get(tsc.id, t1, t2)
+
+            self.assertEqual(tsc.quality, tsc2.quality)
+
+    def test_write_regular_timeseries_with_quality_and_notes(self):
+        """
+        Quality flags and notes written together on a RegularTimeSeries survive a put/get round trip.
+        """
+        with HecDss(self.test_files.get_copy("sample7.dss")) as dss:
+            t1 = datetime(2005, 1, 1)
+            t2 = datetime(2005, 1, 4)
+            tsc = dss.get("//SACRAMENTO/PRECIP-INC//1Day/OBS/", t1, t2)
+            tsc.id = "//SACRAMENTO/PRECIP-INC/01Jan2005/1Day/OBS-quality-notes/"
+            tsc.quality = [0, 1, 2, 3][:len(tsc.values)]
+            tsc.notes = ["", "manual override", "", "estimated"][:len(tsc.values)]
+
+            dss.put(tsc)
+            tsc2 = dss.get(tsc.id, t1, t2)
+
+            self.assertEqual(tsc.quality, tsc2.quality)
+            self.assertEqual(tsc.notes, tsc2.notes)
 
     def test_path_empty_parts(self):
         with HecDss(self.test_files.get_copy("Depth_Area_01.dss")) as dss:
             path = "//010020-R/STORAGE-FLOW///DAA:Depth-Area 01>010025-R/"
             tsc = dss.get(path)
             assert (len(tsc.values) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()

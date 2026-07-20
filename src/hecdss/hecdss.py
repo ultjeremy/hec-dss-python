@@ -20,6 +20,7 @@ from hecdss.text import Text
 
 
 DSS_UNDEFINED_VALUE = -340282346638528859811704183484516925440.000000
+MAX_NOTE_LENGTH: int = 40
 
 
 class HecDss:
@@ -445,6 +446,8 @@ class HecDss:
         values = []
         numberValuesRead = [0]
         quality = []
+        notes = []
+        noteLength = MAX_NOTE_LENGTH
         julianBaseDate = [0]
         timeGranularitySeconds = [0]
         units = [""]
@@ -461,6 +464,9 @@ class HecDss:
             times,
             values,
             number_periods + 1,
+            None,
+            noteLength,
+            notes,
             numberValuesRead,
             quality,
             qualityElementSize[0],
@@ -492,6 +498,7 @@ class HecDss:
                     times = []
                     values = []
                     quality = []
+                    notes = []
                 else:
                     start = 0 if startDateTime and not trim else trimmed_indices[0]
                     end = len(times) if endDateTime and not trim else trimmed_indices[-1] + 1
@@ -499,6 +506,8 @@ class HecDss:
                     values = values[start:end]
                     if quality != []:
                         quality = quality[start:end]
+                    if notes != []:
+                        notes = notes[start:end]
         new_times = DateConverter.date_times_from_julian_array(
             times, timeGranularitySeconds[0], julianBaseDate[0]
         )
@@ -509,6 +518,7 @@ class HecDss:
             arr = np.delete(arr, indices)
             new_times = [new_times[i] for i in range(len(new_times)) if not np.isin(i, indices)]
             quality = [quality[i] for i in range(len(quality)) if not np.isin(i, indices)]
+            notes = [notes[i] for i in range(len(notes)) if not np.isin(i, indices)]
 
         values = arr
         units = units[0]
@@ -528,7 +538,7 @@ class HecDss:
             start_date = _startDateTime - timedelta(seconds=interval_seconds)
 
         location_info = self._get_location_info(pathname)
-        ts = ts.create(values=values, times=new_times, quality=quality, units=units, data_type=data_type, start_date=start_date,
+        ts = ts.create(values=values, times=new_times, quality=quality, notes=notes, units=units, data_type=data_type, start_date=start_date,
                        time_granularity_seconds=time_granularity_seconds, julian_base_date=julian_base_date, time_zone_name=timeZoneName, path=pathname, location_info=location_info)
 
         if (DssPath(pathname).D.lower() == "ts-pattern"):
@@ -614,6 +624,7 @@ class HecDss:
 
             startDate, startTime = DateConverter.dss_datetime_strings_from_datetime(ts.times[0])
             quality = container.quality
+            noteLength = MAX_NOTE_LENGTH
 
             status = self._native.hec_dss_tsStoreRegular(
                 ts.id,
@@ -621,6 +632,8 @@ class HecDss:
                 startTime,
                 ts.values,
                 quality,
+                ts.notes,
+                noteLength,
                 False,
                 ts.units,
                 ts.data_type,
@@ -637,6 +650,7 @@ class HecDss:
             start_date_base = (datetime(1900, 1, 1) + timedelta(days=its.julian_base_date))
             startDate, startTime = DateConverter.dss_datetime_strings_from_datetime(start_date_base)
             quality = container.quality
+            noteLength = MAX_NOTE_LENGTH
             julian_times = DateConverter.julian_array_from_date_times(
                 its.times, its.time_granularity_seconds, start_date_base)
             if max(julian_times) >= 2147483647:
@@ -649,6 +663,8 @@ class HecDss:
                 its.time_granularity_seconds,
                 its.values,
                 quality,
+                its.notes,
+                noteLength,
                 False,
                 its.units,
                 its.data_type,
@@ -766,6 +782,8 @@ class HecDss:
                 startTime,
                 RTS.values,
                 RTS.quality,
+                RTS.notes,
+                MAX_NOTE_LENGTH,
                 False,
                 RTS.units,
                 RTS.data_type,
