@@ -1,14 +1,24 @@
 import ctypes
-from ctypes import c_float, c_double, c_char_p, c_int, c_void_p, POINTER
-from ctypes import c_int32
-from ctypes import byref, create_string_buffer
-from ctypes.util import find_library
-import numpy as np
-from importlib import resources
 import io
 import os
 import sys
+from ctypes import (
+    POINTER,
+    byref,
+    c_char_p,
+    c_double,
+    c_float,
+    c_int,
+    c_int32,
+    c_void_p,
+    create_string_buffer,
+)
+from ctypes.util import find_library
+from importlib import resources
 from typing import List
+
+import numpy as np
+
 
 # from hecdss.location_info import LocationInfo
 
@@ -31,7 +41,6 @@ class _Native:
         if len(found_libs) == 0:
             raise FileNotFoundError(f"{libname} not found Paths searched: {paths_to_try}")
         return ctypes.CDLL(found_libs[0])
-
 
     def __init__(self):
         """Loads the hecdss shared library from disk"""
@@ -239,7 +248,8 @@ class _Native:
         c_data = (c_float * 0)()
 
         result = self.dll.hec_dss_gridRetrieve(self.handle, pathname.encode("utf-8"), False,
-                                               ctypes.byref(type_pointer), ctypes.byref(dataType_pointer),
+                                               ctypes.byref(type_pointer), ctypes.byref(
+                                                   dataType_pointer),
                                                c_lowerLeftCellX, c_lowerLeftCellY,
                                                c_numberOfCellsX, c_numberOfCellsY,
                                                c_numberOfRanges, c_srsDefinitionType,
@@ -250,9 +260,12 @@ class _Native:
                                                c_srsName, srsNameLength,
                                                c_srsDefinition, srsDefinitionLength,
                                                c_timeZoneID, timeZoneIDLength,
-                                               ctypes.byref(c_cellSize), ctypes.byref(c_xCoordOfGridCellZero),
-                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(c_nullValue),
-                                               ctypes.byref(c_maxDataValue), ctypes.byref(c_minDataValue),
+                                               ctypes.byref(c_cellSize), ctypes.byref(
+                                                   c_xCoordOfGridCellZero),
+                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(
+                                                   c_nullValue),
+                                               ctypes.byref(c_maxDataValue), ctypes.byref(
+                                                   c_minDataValue),
                                                ctypes.byref(c_meanDataValue),
                                                c_rangeLimitTable, rangeTablesLength,
                                                c_numberEqualOrExceedingRangeLimit,
@@ -269,7 +282,8 @@ class _Native:
         c_data = (c_float * dataLength)()
 
         result = self.dll.hec_dss_gridRetrieve(self.handle, pathname.encode("utf-8"), True,
-                                               ctypes.byref(type_pointer), ctypes.byref(dataType_pointer),
+                                               ctypes.byref(type_pointer), ctypes.byref(
+                                                   dataType_pointer),
                                                c_lowerLeftCellX, c_lowerLeftCellY,
                                                c_numberOfCellsX, c_numberOfCellsY,
                                                c_numberOfRanges, c_srsDefinitionType,
@@ -280,9 +294,12 @@ class _Native:
                                                c_srsName, srsNameLength,
                                                c_srsDefinition, srsDefinitionLength,
                                                c_timeZoneID, timeZoneIDLength,
-                                               ctypes.byref(c_cellSize), ctypes.byref(c_xCoordOfGridCellZero),
-                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(c_nullValue),
-                                               ctypes.byref(c_maxDataValue), ctypes.byref(c_minDataValue),
+                                               ctypes.byref(c_cellSize), ctypes.byref(
+                                                   c_xCoordOfGridCellZero),
+                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(
+                                                   c_nullValue),
+                                               ctypes.byref(c_maxDataValue), ctypes.byref(
+                                                   c_minDataValue),
                                                ctypes.byref(c_meanDataValue),
                                                c_rangeLimitTable, rangeTablesLength,
                                                c_numberEqualOrExceedingRangeLimit,
@@ -573,7 +590,8 @@ class _Native:
         if numberCurves > 1:
             _values = pd.values.tolist()
             if len(_values[0]) > 1:
-                _values = [[_values[i][j] for i in range(len(_values))] for j in range(len(_values[0]))]
+                _values = [[_values[i][j]
+                            for i in range(len(_values))] for j in range(len(_values[0]))]
             values2 = np.array(_values)
         else:
             values2 = pd.values
@@ -739,7 +757,7 @@ class _Native:
             times: List[int],
             values: List[float],
             arraySize: str,
-            numberValuesRead,
+            numberValuesRead: List[int],
             quality: List[int],
             qualityLength: int,
             julianBaseDate: List[int],
@@ -923,7 +941,7 @@ class _Native:
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
             c_char_p,  # timeZoneName (const char*)
-            c_int, # storageFlag (int)
+            c_int,  # storageFlag (int)
         ]
 
         c_pathname = c_char_p(pathname.encode("utf-8"))
@@ -1042,7 +1060,6 @@ class _Native:
             if len(doubleValues) > 0:
                 doubleValues[:] = np.ctypeslib.as_array(c_doubleValues, shape=(len(doubleValues),))
 
-
         else:
             print("Error reading array status = {status}")
 
@@ -1159,28 +1176,28 @@ class _Native:
         return result
 
     def hec_dss_delete(self, pathname: str) -> int:
-            """
-            Deletes a record from the DSS file.
+        """
+        Deletes a record from the DSS file.
 
-            Args:
-                pathname (str): The pathname of the record to delete.
+        Args:
+            pathname (str): The pathname of the record to delete.
 
-            Returns:
-                int: Status of zero when successful, non-zero on error.
-            """
-            f = self.dll.hec_dss_delete
-            f.argtypes = [
-                c_void_p,  # dss_file* dss
-                c_char_p   # const char* pathname
-            ]
-            f.restype = c_int
+        Returns:
+            int: Status of zero when successful, non-zero on error.
+        """
+        f = self.dll.hec_dss_delete
+        f.argtypes = [
+            c_void_p,  # dss_file* dss
+            c_char_p   # const char* pathname
+        ]
+        f.restype = c_int
 
-            result = f(self.handle, pathname.encode("utf-8"))
+        result = f(self.handle, pathname.encode("utf-8"))
 
-            if result != 0:
-                print("Function call failed with result:", result)
+        if result != 0:
+            print("Function call failed with result:", result)
 
-            return result
+        return result
 
     def hec_dss_textStore(self, pathname, text, length=None):
         """
@@ -1200,12 +1217,12 @@ class _Native:
         f.restype = c_int
 
         result = f(self.handle, pathname.encode("utf-8"),
-                    text.encode("utf-8"), 
-                    length if length is not None else len(text))
-    
+                   text.encode("utf-8"),
+                   length if length is not None else len(text))
+
         return result
-    
-    def hec_dss_textRetrieve(self, pathname, buffer :List[str], buff_size: int) -> int:
+
+    def hec_dss_textRetrieve(self, pathname, buffer: List[str], buff_size: int) -> int:
         """
         Store text data in a DSS file.
         Args:
@@ -1224,8 +1241,8 @@ class _Native:
 
         c_buffer = create_string_buffer(buff_size)
         result = f(self.handle, pathname.encode("utf-8"),
-                    c_buffer, 
-                    buff_size)
-    
+                   c_buffer,
+                   buff_size)
+
         buffer.append(c_buffer.value.decode("utf-8"))
         return result

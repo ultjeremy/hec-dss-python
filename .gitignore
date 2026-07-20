@@ -17,3 +17,4 @@ libhecdss.so
 .venv/
 tests/csv_testing/
 
+src/hecdss/lib/libhecdss_backup.so
