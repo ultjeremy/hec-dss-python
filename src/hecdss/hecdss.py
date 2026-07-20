@@ -6,17 +6,18 @@ import numpy as np
 
 import hecdss.record_type
 from hecdss.array_container import ArrayContainer
-from hecdss.location_info import LocationInfo
-from hecdss.text import Text
-from hecdss.paired_data import PairedData
-from hecdss.native import _Native
+from hecdss.catalog import Catalog
 from hecdss.dateconverter import DateConverter
+from hecdss.dsspath import DssPath
+from hecdss.gridded_data import GriddedData
+from hecdss.irregular_timeseries import IrregularTimeSeries
+from hecdss.location_info import LocationInfo
+from hecdss.native import _Native
+from hecdss.paired_data import PairedData
 from hecdss.record_type import RecordType
 from hecdss.regular_timeseries import RegularTimeSeries
-from hecdss.irregular_timeseries import IrregularTimeSeries
-from hecdss.catalog import Catalog
-from hecdss.gridded_data import GriddedData
-from hecdss.dsspath import DssPath
+from hecdss.text import Text
+
 
 DSS_UNDEFINED_VALUE = -340282346638528859811704183484516925440.000000
 
@@ -24,7 +25,8 @@ DSS_UNDEFINED_VALUE = -340282346638528859811704183484516925440.000000
 class HecDss:
     """ Main class for working with DSS files
     """
-    def __init__(self, filename:str):
+
+    def __init__(self, filename: str):
         """constructor for HecDSS
 
         Args:
@@ -56,6 +58,7 @@ class HecDss:
             exc_tb (traceback): The traceback object.
         """
         self.close()
+
     @staticmethod
     def set_global_debug_level(level: int) -> None:
         """
@@ -73,6 +76,7 @@ class HecDss:
         """
         # Set the native DLL level (controls what gets written)
         _Native().hec_dss_set_debug_level(level)
+
     def close(self):
         """closes the DSS file and releases any locks
         """
@@ -115,7 +119,7 @@ class HecDss:
         """
         if type == RecordType.RegularTimeSeries or type == RecordType.IrregularTimeSeries:
             new_pathname = pathname
-            if(DssPath(pathname).D.lower() != "ts-pattern"):
+            if (DssPath(pathname).D.lower() != "ts-pattern"):
                 new_pathname = DssPath(pathname).path_without_date().__str__()
             elif type == RecordType.IrregularTimeSeries:
                 raise ValueError("ts-pattern is not fully supported for irregular time series")
@@ -137,16 +141,15 @@ class HecDss:
     def _get_text(self, pathname: str):
         textLength = 1024
 
-
         BUFFER_TOO_SMALL = -17
         textArray = []
         status = self._native.hec_dss_textRetrieve(pathname, textArray, textLength)
         while status == BUFFER_TOO_SMALL:
             textLength *= 2
-            if textLength > 2*1048576:  # 2 MB
+            if textLength > 2 * 1048576:  # 2 MB
                 print(f"Text record too large to read from '{pathname}'")
                 return None
-            textArray = [] # otherwise we get an entry for each attempt
+            textArray = []  # otherwise we get an entry for each attempt
             status = self._native.hec_dss_textRetrieve(pathname, textArray, textLength)
 
         if status != 0:
@@ -162,7 +165,8 @@ class HecDss:
         floatValuesCount = [0]
         doubleValuesCount = [0]
 
-        self._native.hec_dss_arrayRetrieveInfo(pathname, intValuesCount, floatValuesCount, doubleValuesCount)
+        self._native.hec_dss_arrayRetrieveInfo(
+            pathname, intValuesCount, floatValuesCount, doubleValuesCount)
 
         intValues = []
         floatValues = []
@@ -177,7 +181,8 @@ class HecDss:
 
         status = self._native.hec_dss_arrayRetrieve(pathname, intValues, floatValues, doubleValues)
         location_info = self._get_location_info(pathname)
-        rval = ArrayContainer.create_array_container(intValues, floatValues, doubleValues, path=pathname, location_info=location_info)
+        rval = ArrayContainer.create_array_container(
+            intValues, floatValues, doubleValues, path=pathname, location_info=location_info)
         return rval
 
     def _get_gridded_data(self, pathname):
@@ -340,7 +345,7 @@ class HecDss:
             # ---------------------------------------------------------------------------------------- #
             # rearrange from consecutive values for each curve to consecutive curves for each ordinate #
             # ---------------------------------------------------------------------------------------- #
-            groups = [doubleValues[i*ordinateCount:(i+1)*ordinateCount] for i in range(n)]
+            groups = [doubleValues[i * ordinateCount:(i + 1) * ordinateCount] for i in range(n)]
             doubleValues = list(map(list, zip(*groups)))
         pd.values = np.array(doubleValues).reshape((len(doubleOrdinates), n))
         # pd.values = [doubleValues[i:i+n] for i in range(0, len(doubleValues), n)]
@@ -373,26 +378,29 @@ class HecDss:
 
     def _get_date_time_range(self, pathname, boolFullSet):
 
-        firstValidJulian, firstSeconds, lastValidJulian, lastSeconds = self._get_julian_time_range(pathname, boolFullSet)
+        firstValidJulian, firstSeconds, lastValidJulian, lastSeconds = self._get_julian_time_range(
+            pathname, boolFullSet)
 
         first = DateConverter.date_times_from_julian_array(firstSeconds, 1, firstValidJulian[0])[0]
         last = DateConverter.date_times_from_julian_array(lastSeconds, 1, lastValidJulian[0])[0]
 
         return (first, last)
 
-
     def _get_timeseries(self, pathname, startDateTime, endDateTime, trim):
         # get sizes
-        firstValidJulian, firstSeconds, lastValidJulian, lastSeconds = self._get_julian_time_range(pathname, 1)
+        firstValidJulian, firstSeconds, lastValidJulian, lastSeconds = self._get_julian_time_range(
+            pathname, 1)
         if startDateTime is None:
-            _startDateTime = DateConverter.date_time_from_julian_second(firstValidJulian[0], firstSeconds[0])
+            _startDateTime = DateConverter.date_time_from_julian_second(
+                firstValidJulian[0], firstSeconds[0])
             firstSeconds, firstJulian = firstSeconds, firstValidJulian
         else:
             _startDateTime = startDateTime
             minutes = DateConverter.julian_array_from_date_times([startDateTime])[0]
             firstSeconds, firstJulian = [minutes % 1440 * 60], [minutes // 1440]
         if endDateTime is None:
-            _endDateTime =  DateConverter.date_time_from_julian_second(lastValidJulian[0], lastSeconds[0])
+            _endDateTime = DateConverter.date_time_from_julian_second(
+                lastValidJulian[0], lastSeconds[0])
             lastSeconds, lastJulian = lastSeconds, lastValidJulian
         else:
             _endDateTime = endDateTime
@@ -452,7 +460,7 @@ class HecDss:
             endTime,
             times,
             values,
-            number_periods+1,
+            number_periods + 1,
             numberValuesRead,
             quality,
             qualityElementSize[0],
@@ -478,14 +486,15 @@ class HecDss:
         else:
             ts = RegularTimeSeries()
             if trim or not startDateTime or not endDateTime:
-                trimmed_indices = [i for i, v in enumerate(values) if values[i] != DSS_UNDEFINED_VALUE]
+                trimmed_indices = [i for i, v in enumerate(
+                    values) if values[i] != DSS_UNDEFINED_VALUE]
                 if not trimmed_indices:
                     times = []
                     values = []
                     quality = []
                 else:
                     start = 0 if startDateTime and not trim else trimmed_indices[0]
-                    end = len(times) if endDateTime and not trim else trimmed_indices[-1]+1
+                    end = len(times) if endDateTime and not trim else trimmed_indices[-1] + 1
                     times = times[start:end]
                     values = values[start:end]
                     if quality != []:
@@ -495,7 +504,8 @@ class HecDss:
         )
         arr = np.array(values)
         if RecordType.IrregularTimeSeries == type(ts):
-            indices = np.where(np.isclose(values, DSS_UNDEFINED_VALUE, rtol=0, atol=0, equal_nan=True))[0]
+            indices = np.where(np.isclose(values, DSS_UNDEFINED_VALUE,
+                               rtol=0, atol=0, equal_nan=True))[0]
             arr = np.delete(arr, indices)
             new_times = [new_times[i] for i in range(len(new_times)) if not np.isin(i, indices)]
             quality = [quality[i] for i in range(len(quality)) if not np.isin(i, indices)]
@@ -507,10 +517,10 @@ class HecDss:
         time_granularity_seconds = timeGranularitySeconds[0]
         julian_base_date = julianBaseDate[0]
         timeZoneName = timeZoneName[0]
-        if(timeZoneName):
+        if (timeZoneName):
             try:
                 new_times = [i.replace(tzinfo=ZoneInfo(timeZoneName)) for i in new_times]
-            except ZoneInfoNotFoundError as e: 
+            except ZoneInfoNotFoundError as e:
                 print(f"Warning: {e}. Using no zone instead.")
                 timeZoneName = False
         elif (DssPath(pathname).D.lower() == "ts-pattern"):
@@ -518,7 +528,8 @@ class HecDss:
             start_date = _startDateTime - timedelta(seconds=interval_seconds)
 
         location_info = self._get_location_info(pathname)
-        ts = ts.create(values=values, times=new_times, quality=quality, units=units, data_type=data_type, start_date=start_date, time_granularity_seconds=time_granularity_seconds, julian_base_date=julian_base_date, time_zone_name=timeZoneName, path=pathname, location_info=location_info)
+        ts = ts.create(values=values, times=new_times, quality=quality, units=units, data_type=data_type, start_date=start_date,
+                       time_granularity_seconds=time_granularity_seconds, julian_base_date=julian_base_date, time_zone_name=timeZoneName, path=pathname, location_info=location_info)
 
         if (DssPath(pathname).D.lower() == "ts-pattern"):
             new_interval = ts._get_interval_path()
@@ -623,10 +634,11 @@ class HecDss:
                 raise ValueError("ts-pattern is not fully supported for irregular time series")
             # def hec_dss_tsStoreRegular(dss, pathname, startDate, startTime, valueArray, qualityArray,
             #                           saveAsFloat, units, type):
-            start_date_base = (datetime(1900, 1, 1)+timedelta(days=its.julian_base_date))
+            start_date_base = (datetime(1900, 1, 1) + timedelta(days=its.julian_base_date))
             startDate, startTime = DateConverter.dss_datetime_strings_from_datetime(start_date_base)
             quality = container.quality
-            julian_times = DateConverter.julian_array_from_date_times(its.times, its.time_granularity_seconds, start_date_base)
+            julian_times = DateConverter.julian_array_from_date_times(
+                its.times, its.time_granularity_seconds, start_date_base)
             if max(julian_times) >= 2147483647:
                 raise Exception("Julian times contains value larger than 2147483647, increase granularity or change "
                                 "start_date_base to fix.")
@@ -654,20 +666,22 @@ class HecDss:
             status = self._native.hec_dss_gridStore(gd)
             self._catalog = None
         elif type(container) is ArrayContainer:
-            status = self._native.hec_dss_arrayStore(container.id, container.int_values, container.float_values, container.double_values)
+            status = self._native.hec_dss_arrayStore(
+                container.id, container.int_values, container.float_values, container.double_values)
             self._catalog = None
         elif type(container) is LocationInfo:
-            status = self._native.hec_dss_locationStore(container,1)
+            status = self._native.hec_dss_locationStore(container, 1)
             self._catalog = None
         elif type(container) is Text:
             text = container
             status = self._native.hec_dss_textStore(text.id, text.text, len(text.text))
             self._catalog = None
         else:
-            raise NotImplementedError(f"unsupported record_type: {type(container)}. Expected types are: {RecordType.SUPPORTED_RECORD_TYPES.value}")
+            raise NotImplementedError(
+                f"unsupported record_type: {type(container)}. Expected types are: {RecordType.SUPPORTED_RECORD_TYPES.value}")
 
         if hasattr(container, "location_info") and container.location_info is not None:
-            status = self._native.hec_dss_locationStore(container.location_info,1)
+            status = self._native.hec_dss_locationStore(container.location_info, 1)
 
         # TODO -- instead of invalidating catalog,with _catalog=None
         #  can we be smart?
@@ -678,7 +692,6 @@ class HecDss:
         #     self._catalog.recordTypeDict[pd.id] = RecordType.PairedData
 
         return status
-
 
     def writePrecompressedGrid(self, gd, compressedData, CompressionSize):
         """
@@ -723,7 +736,7 @@ class HecDss:
             if enddatetime:
                 newEndDateTime = enddatetime
 
-            interval_seconds=DateConverter.intervalString_to_sec(delete_path.E)
+            interval_seconds = DateConverter.intervalString_to_sec(delete_path.E)
 
             firstMinutes = DateConverter.julian_array_from_date_times([newStartDateTime])[0]
             firstSeconds, firstJulian = [firstMinutes % 1440 * 60], [firstMinutes // 1440]
@@ -740,7 +753,7 @@ class HecDss:
             )
 
             RTS = RegularTimeSeries()
-            RTS.values = [DSS_UNDEFINED_VALUE]*number_periods
+            RTS.values = [DSS_UNDEFINED_VALUE] * number_periods
             RTS.times = [newStartDateTime, newEndDateTime]
             RTS.start_date = startdatetime
             RTS.id = pathname
@@ -779,7 +792,8 @@ class HecDss:
             if status == 0:
                 self._catalog = None
             else:
-                print(f"Error deleting record from '{pathname}', Record does not exist or timeseries path must be uncondensed")
+                print(
+                    f"Error deleting record from '{pathname}', Record does not exist or timeseries path must be uncondensed")
         return status
 
     def get_catalog(self) -> Catalog:
