@@ -915,7 +915,9 @@ class _Native:
 
         if notes:
             c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
-            for i, note in enumerate(notes):
+            # notes[:len(valueArray)] guards against notes being longer than
+            # valueArray, which would otherwise write past the end of the buffer
+            for i, note in enumerate(notes[:len(valueArray)]):
                 # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
                 encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
                 offset = i * cnoteSize
@@ -993,7 +995,9 @@ class _Native:
 
         if notes:
             c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
-            for i, note in enumerate(notes):
+            # notes[:len(valueArray)] guards against notes being longer than
+            # valueArray, which would otherwise write past the end of the buffer
+            for i, note in enumerate(notes[:len(valueArray)]):
                 # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
                 encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
                 offset = i * cnoteSize

@@ -3,7 +3,6 @@ from datetime import datetime
 from unittest.mock import mock_open, patch
 
 import numpy as np
-
 from file_manager import FileManager
 
 from hecdss import HecDss
@@ -587,32 +586,6 @@ class TestCSV(unittest.TestCase):
         self.assertIn("2,01Sep2021 1200,\r\n", written)
         self.assertNotIn("None", written)
 
-    def test_to_csv_quality_shorter_than_values_truncates(self):
-        """FOOTGUN: to_csv takes the with-quality branch whenever quality is
-        non-empty, then zips (times, values, quality). A quality list shorter than
-        values makes zip stop at the shortest input, so trailing data points are
-        silently dropped from the CSV."""
-        rts = RegularTimeSeries.create(
-            values=[1.0, 2.0, 3.0],
-            times=[
-                datetime(2021, 9, 1, 6, 0),
-                datetime(2021, 9, 1, 12, 0),
-                datetime(2021, 9, 1, 18, 0),
-            ],
-            quality=[0],  # only one flag for three values
-            units="CFS",
-            data_type="INST-VAL",
-            path="/A/B/C//6Hour/F/",
-        )
-        mock_file = mock_open()
-        with patch("builtins.open", mock_file):
-            rts.to_csv("fake.csv", with_metadata=False)
-        handle = mock_file()
-        written = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertIn("1,01Sep2021 0600,1.0,0", written)
-        self.assertNotIn("2,01Sep2021 1200", written)  # silently dropped
-        self.assertNotIn("3,01Sep2021 1800", written)  # silently dropped
-
     def test_read_csv_skips_short_data_row(self):
         """A data row with fewer than 3 columns is malformed and skipped without
         raising (parity with the paired-data reader's short-row handling)."""
@@ -661,6 +634,331 @@ class TestCSV(unittest.TestCase):
         self.assertEqual(result.units, "CFS")
         self.assertEqual(result.data_type, "INST-VAL")
         self.assertEqual(result.id, "/A/B/C//IR-Year/F/")
+
+    # ================================================================== #
+    # NOTES TESTS
+    # ================================================================== #
+
+    def test_to_csv_with_notes(self):
+        """When notes are present (no quality), header gets a 'Notes' col
+        and rows get the note text."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            notes=["", "manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=True)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL,Notes", written)
+        self.assertIn("1,01Sep2021 0600,1.0,", written)
+        self.assertIn("2,01Sep2021 1200,2.0,manual override", written)
+
+    def test_read_csv_with_notes(self):
+        """A CSV with a Notes column (no Quality) populates rts.notes,
+        index-aligned with values."""
+        content = (
+            "Type,Date/Time,INST-VAL,Notes\n"
+            "1,01Sep2021 0600,10.5,\n"
+            "2,01Sep2021 1200,20.0,manual override\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [10.5, 20.0])
+        self.assertEqual(rts.notes, ["", "manual override"])
+
+    def test_round_trip_with_notes(self):
+        """Full write->read round trip for RegularTimeSeries notes on a real
+        temp file."""
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0, 3.0],
+            times=[
+                datetime(2021, 9, 1, 6, 0),
+                datetime(2021, 9, 1, 12, 0),
+                datetime(2021, 9, 1, 18, 0),
+            ],
+            notes=["", "storm event", ""],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=True)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.values.tolist(), [1.0, 2.0, 3.0])
+        self.assertEqual(result.notes, ["", "storm event", ""])
+
+    def test_to_csv_with_notes_without_metadata(self):
+        """Like Quality, the Notes column is driven purely by len(series.notes),
+        independent of with_metadata -- it must still appear when
+        with_metadata=False."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            notes=["", "manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertNotIn("Units", written)
+        self.assertIn("Type,Date/Time,INST-VAL,Notes", written)
+        self.assertIn("2,01Sep2021 1200,2.0,manual override", written)
+
+    def test_round_trip_with_notes_without_metadata(self):
+        """Without metadata, units/data_type come back empty (existing
+        behavior) but notes still survive the round trip."""
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            notes=["", "manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=False)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.units, "")
+        self.assertEqual(result.values.tolist(), [1.0, 2.0])
+        self.assertEqual(result.notes, ["", "manual override"])
+
+    def test_to_csv_with_quality_and_notes(self):
+        """When both quality and notes are present, the header/rows carry
+        both columns with Quality before Notes."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            quality=[0, 5],
+            notes=["", "manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=True)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL,Quality,Notes", written)
+        self.assertIn("1,01Sep2021 0600,1.0,0,", written)
+        self.assertIn("2,01Sep2021 1200,2.0,5,manual override", written)
+
+    def test_round_trip_with_quality_and_notes(self):
+        """Quality and notes both survive a real write->read round trip
+        together, independently of each other."""
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0, 3.0],
+            times=[
+                datetime(2021, 9, 1, 6, 0),
+                datetime(2021, 9, 1, 12, 0),
+                datetime(2021, 9, 1, 18, 0),
+            ],
+            quality=[0, 5, 10],
+            notes=["", "storm event", ""],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=True)
+        result = RegularTimeSeries.read_csv(path)
+
+        self.assertEqual(result.values.tolist(), [1.0, 2.0, 3.0])
+        self.assertEqual(result.quality, [0, 5, 10])
+        self.assertEqual(result.notes, ["", "storm event", ""])
+
+    def test_to_csv_with_notes_but_no_quality_omits_quality_column(self):
+        """When notes are present but quality is empty, only the Notes
+        column should appear -- no stray 'Quality' header or column."""
+        rts = RegularTimeSeries.create(
+            values=[1.0],
+            times=[datetime(2021, 9, 1, 6, 0)],
+            notes=["manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertNotIn("Quality", written)
+        self.assertIn("Type,Date/Time,INST-VAL,Notes", written)
+        self.assertIn("1,01Sep2021 0600,1.0,manual override", written)
+
+    def test_read_csv_notes_and_quality_together(self):
+        """Hand-typed CSV with both Quality and Notes columns present
+        parses both independently and correctly, in the assumed
+        Quality-then-Notes column order."""
+        content = (
+            "Type,Date/Time,INST-VAL,Quality,Notes\n"
+            "1,05Nov2004 0200,8,0,\n"
+            "2,05Nov2004 0300,9,1,estimated\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [8, 9])
+        self.assertEqual(rts.quality, [0, 1])
+        self.assertEqual(rts.notes, ["", "estimated"])
+
+    def test_read_csv_with_partial_notes(self):
+        """A data row missing its trailing Notes cell (even though the header
+        declares a Notes column) should default that entry to an empty
+        string rather than raising -- parity with how a missing Quality
+        cell already defaults to 0 in test_read_csv_with_partial_quality."""
+        content = (
+            "Type,Date/Time,INST-VAL,Notes\n"
+            "1,05Nov2004 0200,8,manual override\n"
+            "2,05Nov2004 0300,9\n"  # missing notes cell!
+            "3,05Nov2004 0400,10,estimated\n"
+        )
+        rts = self.read_rts_from_string(content)
+        self.assertEqual(rts.values.tolist(), [8, 9, 10])
+        self.assertEqual(rts.notes[0], "manual override")
+        self.assertEqual(rts.notes[1], "")
+        self.assertEqual(rts.notes[2], "estimated")
+
+    def test_read_csv_notes_containing_comma_round_trips(self):
+        """A note containing a comma is CSV-quoted on write and comes back
+        intact on read (parity with PairedData's quoted-label test)."""
+        path = self.test_files.create_test_file(".csv")
+        rts = RegularTimeSeries.create(
+            values=[1.0],
+            times=[datetime(2021, 9, 1, 6, 0)],
+            notes=["flow, cfs, estimated"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        rts.to_csv(path, with_metadata=True)
+        result = RegularTimeSeries.read_csv(path)
+        self.assertEqual(result.notes, ["flow, cfs, estimated"])
+
+    def test_to_csv_writes_empty_cell_for_empty_note(self):
+        """An empty-string note writes as an empty cell -- never the literal
+        text 'None' -- even though other entries have real note text."""
+        rts = RegularTimeSeries.create(
+            values=[1.0, 2.0],
+            times=[datetime(2021, 9, 1, 6, 0), datetime(2021, 9, 1, 12, 0)],
+            notes=["", "manual override"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//6Hour/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            rts.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("1,01Sep2021 0600,1.0,\r\n", written)
+        self.assertNotIn("None", written)
+
+    # ---- IRREGULAR TIME SERIES NOTES TESTS ---- #
+
+    def test_irregular_to_csv_with_notes(self):
+        """Basic structure test for IrregularTimeSeries to_csv with notes."""
+        its = IrregularTimeSeries.create(
+            values=[10.5, 20.0, 42.0],
+            times=[
+                datetime(2021, 9, 1, 0, 0),
+                datetime(2021, 9, 2, 0, 0),
+                datetime(2021, 9, 4, 0, 0),
+            ],
+            notes=["", "storm event", ""],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//E/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            its.to_csv("fake_path.csv", with_metadata=True)
+        handle = mock_file()
+        written_data = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertIn("Type,Date/Time,INST-VAL,Notes", written_data)
+        self.assertIn("1,01Sep2021 0000,10.5,", written_data)
+        self.assertIn("2,02Sep2021 0000,20.0,storm event", written_data)
+        self.assertIn("3,04Sep2021 0000,42.0,", written_data)
+
+    def test_irregular_read_csv_with_notes(self):
+        """Hand-typed CSV with a Notes column populates its.notes for
+        IrregularTimeSeries."""
+        content = (
+            "E,,,IR-Year\n"
+            "Type,Date/Time,INST-VAL,Notes\n"
+            "1,01Sep2021 0000,10.5,\n"
+            "2,02Sep2021 0000,20.0,storm event\n"
+            "3,04Sep2021 0000,20.0,\n"
+        )
+        its = self.read_its_from_string(content)
+        self.assertEqual(its.values.tolist(), [10.5, 20.0, 20.0])
+        self.assertEqual(its.notes, ["", "storm event", ""])
+
+    def test_round_trip_irregular_with_notes(self):
+        """Full write->read round trip for IrregularTimeSeries notes on a
+        real temp file, with irregular (non-uniform) time gaps."""
+        path = self.test_files.create_test_file(".csv")
+        its = IrregularTimeSeries.create(
+            values=[10.5, 20.0, 42.0],
+            times=[datetime(2021, 9, 1), datetime(2021, 9, 5), datetime(2021, 9, 20)],
+            notes=["", "storm event", ""],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//IR-Year/F/",
+        )
+        its.to_csv(path, with_metadata=True)
+        result = IrregularTimeSeries.read_csv(path)
+        self.assertEqual(result.values.tolist(), [10.5, 20.0, 42.0])
+        self.assertEqual(result.notes, ["", "storm event", ""])
+
+    def test_irregular_to_csv_with_notes_without_metadata(self):
+        """Notes column appears for IrregularTimeSeries regardless of
+        with_metadata, same as RegularTimeSeries."""
+        its = IrregularTimeSeries.create(
+            values=[10.5, 20.0],
+            times=[datetime(2021, 9, 1, 0, 0), datetime(2021, 9, 2, 0, 0)],
+            notes=["", "storm event"],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//E/F/",
+        )
+        mock_file = mock_open()
+        with patch("builtins.open", mock_file):
+            its.to_csv("fake.csv", with_metadata=False)
+        handle = mock_file()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertNotIn("Units", written)
+        self.assertIn("Type,Date/Time,INST-VAL,Notes", written)
+        self.assertIn("2,02Sep2021 0000,20.0,storm event", written)
+
+    def test_round_trip_irregular_with_quality_and_notes(self):
+        """Quality and notes both survive an IrregularTimeSeries write->read
+        round trip together."""
+        path = self.test_files.create_test_file(".csv")
+        its = IrregularTimeSeries.create(
+            values=[10.5, 20.0, 42.0],
+            times=[datetime(2021, 9, 1), datetime(2021, 9, 5), datetime(2021, 9, 20)],
+            quality=[0, 5, 10],
+            notes=["", "storm event", ""],
+            units="CFS",
+            data_type="INST-VAL",
+            path="/A/B/C//IR-Year/F/",
+        )
+        its.to_csv(path, with_metadata=True)
+        result = IrregularTimeSeries.read_csv(path)
+        self.assertEqual(result.values.tolist(), [10.5, 20.0, 42.0])
+        self.assertEqual(result.quality, [0, 5, 10])
+        self.assertEqual(result.notes, ["", "storm event", ""])
 
 
 if __name__ == "__main__":

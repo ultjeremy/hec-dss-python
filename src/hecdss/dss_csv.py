@@ -39,26 +39,37 @@ def timeseries_to_csv(
                     continue
                 writer.writerow([letter, "", "", value])  # Writing metadata rows
             writer.writerow(["Units", "", "", series.units])
-        if len(series.quality) > 0:
-            # Write column names with quality
-            writer.writerow(["Type", "Date/Time", series.data_type, "Quality"])
-        else:
-            # Write column names without quality
-            writer.writerow(["Type", "Date/Time", series.data_type])
+
+        header: list[str] = ["Type", "Date/Time", series.data_type]
+
+        has_quality: bool = len(series.quality) > 0
+        has_notes: bool = len(series.notes) > 0
+
+        if has_quality:
+            header.append("Quality")
+        if has_notes:
+            header.append("Notes")
+
+        writer.writerow(header)
 
         time_format: str = ("%d%b%Y %H%M%S" if _needs_second_precision(series) else "%d%b%Y %H%M")
 
-        ordinate: int = 1
-        if len(series.quality) > 0:
-            for time, value, quality in zip(series.times, series.values, series.quality):
-                formatted_time: str = time.strftime(time_format)
-                writer.writerow([ordinate, formatted_time, value, quality])
-                ordinate += 1
-        else:
-            for time, value in zip(series.times, series.values):
-                formatted_time: str = time.strftime(time_format)
-                writer.writerow([ordinate, formatted_time, value])
-                ordinate += 1
+        for i, (time, value) in enumerate(zip(series.times, series.values)):
+            ordinate: str = str(i + 1)
+            formatted_time: str = time.strftime(time_format)
+            row: list[str] = [ordinate, formatted_time, value]
+
+            if has_quality:
+                try:
+                    row.append(series.quality[i])
+                except IndexError:
+                    row.append(DEFAULT_MISSING_VALUE)
+            if has_notes:
+                try:
+                    row.append(series.notes[i])
+                except IndexError:
+                    row.append(DEFAULT_MISSING_VALUE)
+            writer.writerow(row)
 
 
 def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries], path: str) -> RegularTimeSeries | IrregularTimeSeries:
@@ -75,9 +86,9 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     if cls not in (RegularTimeSeries, IrregularTimeSeries):
         raise TypeError("cls must be RegularTimeSeries or IrregularTimeSeries")
 
-    times, values, quality, units, data_type = [], [], [], "", ""
+    times, values, quality, notes, units, data_type = [], [], [], [], "", ""
     path_parts: dict[str, str] = _empty_path_parts()
-    has_quality: bool = False  # flags
+    column_index: dict[str, int] = {}
 
     with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
@@ -94,21 +105,19 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
             elif first_column_item == "Type":  # reached the header
                 if len(row) >= 3:  # ['Type', 'Date/Time', data_type, ...potentially more]
                     data_type = row[2].strip()
-                # ['Type', 'Date/Time', data_type, 'Quality', ...potentially more]
-                if len(row) >= 4 and row[3].strip() == "Quality":
-                    has_quality = True
+                # ['Type', 'Date/Time', data_type, 'Quality', 'Notes']
+                column_index = {
+                    name.strip(): i for i, name in enumerate(row) if i >= 3}
             else:  # Data row
                 if len(row) < 3:
                     continue  # csv is malformed, something is missing
 
                 raw_time: str = row[1].strip()
-                # Time format is determined by length of raw_time
                 time_format: str = _get_time_format(raw_time)
                 if time_format is None:
                     # Time format is unrecognized
                     continue
 
-                # Do we need to roll over the day date? Yes if time is 2400
                 roll_day: bool = _need_roll_day(time_format, raw_time)
                 if roll_day:  # 2400 isn't a valid hour, so roll it to 0000 before parsing and add a day after
                     raw_time = raw_time.replace(" 2400", " 0000")
@@ -129,12 +138,18 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
 
                 times.append(time)
                 values.append(value)
-                if has_quality:  # Always keep quality index-aligned with values, defaulting a missing cell to 0
-                    quality_str: str = row[3].strip() if len(row) >= 4 else ""
+
+                quality_idx = column_index.get("Quality")
+                if quality_idx is not None:
+                    quality_str = row[quality_idx].strip() if len(row) > quality_idx else ""
                     try:
                         quality.append(int(quality_str) if quality_str else 0)
                     except ValueError:
                         quality.append(0)
+
+                notes_idx = column_index.get("Notes")
+                if notes_idx is not None:
+                    notes.append(row[notes_idx].strip() if len(row) > notes_idx else "")
 
     id_path: str = _path_parts_to_id(path_parts)
     interval: str | int = path_parts["E"]
@@ -143,6 +158,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
         values=values,
         times=times,
         quality=quality,
+        notes=notes,
         units=units,
         data_type=data_type,
         interval=interval,

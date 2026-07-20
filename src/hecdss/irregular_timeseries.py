@@ -27,13 +27,17 @@ class IrregularTimeSeries:
         self.id = ""
         self.location_info = None
 
-    def add_data_point(self, date, value):
+    def add_data_point(self, date, value, flag=None, note=None):
         """
         append a date,value to this time-series
         """
 
         self.times.append(date)
         self.values.append(value)
+        if flag is not None:
+            self.quality.append(flag)
+        if note is not None:
+            self.notes.append(note)
 
     def get_value_at(self, date):
         """
