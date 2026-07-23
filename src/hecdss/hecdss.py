@@ -624,7 +624,6 @@ class HecDss:
 
             startDate, startTime = DateConverter.dss_datetime_strings_from_datetime(ts.times[0])
             quality = container.quality
-            noteLength = MAX_NOTE_LENGTH
 
             status = self._native.hec_dss_tsStoreRegular(
                 ts.id,
@@ -633,7 +632,6 @@ class HecDss:
                 ts.values,
                 quality,
                 ts.notes,
-                noteLength,
                 False,
                 ts.units,
                 ts.data_type,
@@ -650,7 +648,6 @@ class HecDss:
             start_date_base = (datetime(1900, 1, 1) + timedelta(days=its.julian_base_date))
             startDate, startTime = DateConverter.dss_datetime_strings_from_datetime(start_date_base)
             quality = container.quality
-            noteLength = MAX_NOTE_LENGTH
             julian_times = DateConverter.julian_array_from_date_times(
                 its.times, its.time_granularity_seconds, start_date_base)
             if max(julian_times) >= 2147483647:
@@ -664,7 +661,6 @@ class HecDss:
                 its.values,
                 quality,
                 its.notes,
-                noteLength,
                 False,
                 its.units,
                 its.data_type,
@@ -783,7 +779,6 @@ class HecDss:
                 RTS.values,
                 RTS.quality,
                 RTS.notes,
-                MAX_NOTE_LENGTH,
                 False,
                 RTS.units,
                 RTS.data_type,

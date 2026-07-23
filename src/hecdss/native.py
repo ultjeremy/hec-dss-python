@@ -23,6 +23,31 @@ import numpy as np
 # from hecdss.location_info import LocationInfo
 
 
+def _pack_notes(notes, valueCount):
+    """Packs a list of note strings into the layout hec_dss_tsStore* expects:
+    one note per value, each terminated by a single null byte, no padding.
+    Pads with "" or drops extras so the note count always matches valueCount.
+
+    Returns (packed_bytes, total_length), or (None, 0) when there is nothing
+    to store.
+    """
+    if not notes or valueCount <= 0:
+        return None, 0
+
+    packed = bytearray()
+    for i in range(valueCount):
+        # Take the note if it exists, otherwise pad with an empty note
+        # so the note count always matches valueCount.
+        note = notes[i] if i < len(notes) else ""
+        if note is None:
+            note = ""
+
+        packed += note.encode("utf-8")
+        packed += b"\x00"
+
+    return bytes(packed), len(packed)
+
+
 class _Native:
     """Wrapper for Native method calls to hecdss.dll or libhecdss.so
     _Native should not be used directly; Use HecDss
@@ -876,7 +901,6 @@ class _Native:
             valueArray,
             qualityArray,
             notes,
-            cnoteSize,
             saveAsFloat,
             units,
             dataType,
@@ -894,8 +918,8 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
-            c_char_p,  # cnotesBuffer
-            c_int,  # cnoteSize
+            c_char_p,  # cnotes (packed, one '\0' terminated note per value)
+            c_int,  # cnotesLengthTotal
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
@@ -913,20 +937,7 @@ class _Native:
         c_valueArray = (c_double * len(valueArray))(*valueArray)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
-        if notes:
-            c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
-            # notes[:len(valueArray)] guards against notes being longer than
-            # valueArray, which would otherwise write past the end of the buffer
-            for i, note in enumerate(notes[:len(valueArray)]):
-                # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
-                encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
-                offset = i * cnoteSize
-                # write encoded bytes of encoded starting at offset
-                c_cnotesBuffer[offset: offset + len(encoded)] = encoded
-            c_cnoteSize = cnoteSize
-        else:
-            c_cnotesBuffer = None
-            c_cnoteSize = 0
+        c_cnotes, c_cnotesLengthTotal = _pack_notes(notes, len(valueArray))
 
         return self.dll.hec_dss_tsStoreRegular(
             self.handle,
@@ -937,8 +948,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
-            c_cnotesBuffer,
-            c_cnoteSize,
+            c_cnotes,
+            c_cnotesLengthTotal,
             int(saveAsFloat),
             c_units,
             c_type,
@@ -955,7 +966,6 @@ class _Native:
             valueArray,
             qualityArray,
             notes,
-            cnoteSize,
             saveAsFloat,
             units,
             dataType,
@@ -974,8 +984,8 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
-            c_char_p,  # cnotesBuffer (char*)
-            c_int,  # cnoteSize (int)
+            c_char_p,  # cnotes (packed, one '\0' terminated note per value)
+            c_int,  # cnotesLengthTotal
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
@@ -993,20 +1003,7 @@ class _Native:
         c_times = (c_int * len(times))(*times)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
-        if notes:
-            c_cnotesBuffer = create_string_buffer(len(valueArray) * cnoteSize)
-            # notes[:len(valueArray)] guards against notes being longer than
-            # valueArray, which would otherwise write past the end of the buffer
-            for i, note in enumerate(notes[:len(valueArray)]):
-                # encoded defends that note doesn't break if None, helps convert to C raw bytes, and truncates to cnoteSize - 1 to reserve space for null byte \x00
-                encoded = (note or "").encode("utf-8")[: cnoteSize - 1]
-                offset = i * cnoteSize
-                # write encoded bytes of encoded starting at offset
-                c_cnotesBuffer[offset: offset + len(encoded)] = encoded
-            c_cnoteSize = cnoteSize
-        else:
-            c_cnotesBuffer = None
-            c_cnoteSize = 0
+        c_cnotes, c_cnotesLengthTotal = _pack_notes(notes, len(valueArray))
 
         return self.dll.hec_dss_tsStoreIrregular(
             self.handle,
@@ -1018,8 +1015,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
-            c_cnotesBuffer,
-            c_cnoteSize,
+            c_cnotes,
+            c_cnotesLengthTotal,
             int(saveAsFloat),
             c_units,
             c_type,
