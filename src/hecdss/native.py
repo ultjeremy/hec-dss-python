@@ -1,16 +1,51 @@
 import ctypes
-from ctypes import c_float, c_double, c_char_p, c_int, c_void_p, POINTER
-from ctypes import c_int32
-from ctypes import byref, create_string_buffer
-from ctypes.util import find_library
-import numpy as np
-from importlib import resources
 import io
 import os
 import sys
+from ctypes import (
+    POINTER,
+    byref,
+    c_char_p,
+    c_double,
+    c_float,
+    c_int,
+    c_int32,
+    c_void_p,
+    create_string_buffer,
+)
+from ctypes.util import find_library
+from importlib import resources
 from typing import List
 
+import numpy as np
+
+
 # from hecdss.location_info import LocationInfo
+
+
+def _pack_notes(notes, valueCount):
+    """Packs a list of note strings into the layout hec_dss_tsStore* expects:
+    one note per value, each terminated by a single null byte, no padding.
+    Pads with "" or drops extras so the note count always matches valueCount.
+
+    Returns (packed_bytes, total_length), or (None, 0) when there is nothing
+    to store.
+    """
+    if not notes or valueCount <= 0:
+        return None, 0
+
+    packed = bytearray()
+    for i in range(valueCount):
+        # Take the note if it exists, otherwise pad with an empty note
+        # so the note count always matches valueCount.
+        note = notes[i] if i < len(notes) else ""
+        if note is None:
+            note = ""
+
+        packed += note.encode("utf-8")
+        packed += b"\x00"
+
+    return bytes(packed), len(packed)
 
 
 class _Native:
@@ -31,7 +66,6 @@ class _Native:
         if len(found_libs) == 0:
             raise FileNotFoundError(f"{libname} not found Paths searched: {paths_to_try}")
         return ctypes.CDLL(found_libs[0])
-
 
     def __init__(self):
         """Loads the hecdss shared library from disk"""
@@ -239,7 +273,8 @@ class _Native:
         c_data = (c_float * 0)()
 
         result = self.dll.hec_dss_gridRetrieve(self.handle, pathname.encode("utf-8"), False,
-                                               ctypes.byref(type_pointer), ctypes.byref(dataType_pointer),
+                                               ctypes.byref(type_pointer), ctypes.byref(
+                                                   dataType_pointer),
                                                c_lowerLeftCellX, c_lowerLeftCellY,
                                                c_numberOfCellsX, c_numberOfCellsY,
                                                c_numberOfRanges, c_srsDefinitionType,
@@ -250,9 +285,12 @@ class _Native:
                                                c_srsName, srsNameLength,
                                                c_srsDefinition, srsDefinitionLength,
                                                c_timeZoneID, timeZoneIDLength,
-                                               ctypes.byref(c_cellSize), ctypes.byref(c_xCoordOfGridCellZero),
-                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(c_nullValue),
-                                               ctypes.byref(c_maxDataValue), ctypes.byref(c_minDataValue),
+                                               ctypes.byref(c_cellSize), ctypes.byref(
+                                                   c_xCoordOfGridCellZero),
+                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(
+                                                   c_nullValue),
+                                               ctypes.byref(c_maxDataValue), ctypes.byref(
+                                                   c_minDataValue),
                                                ctypes.byref(c_meanDataValue),
                                                c_rangeLimitTable, rangeTablesLength,
                                                c_numberEqualOrExceedingRangeLimit,
@@ -269,7 +307,8 @@ class _Native:
         c_data = (c_float * dataLength)()
 
         result = self.dll.hec_dss_gridRetrieve(self.handle, pathname.encode("utf-8"), True,
-                                               ctypes.byref(type_pointer), ctypes.byref(dataType_pointer),
+                                               ctypes.byref(type_pointer), ctypes.byref(
+                                                   dataType_pointer),
                                                c_lowerLeftCellX, c_lowerLeftCellY,
                                                c_numberOfCellsX, c_numberOfCellsY,
                                                c_numberOfRanges, c_srsDefinitionType,
@@ -280,9 +319,12 @@ class _Native:
                                                c_srsName, srsNameLength,
                                                c_srsDefinition, srsDefinitionLength,
                                                c_timeZoneID, timeZoneIDLength,
-                                               ctypes.byref(c_cellSize), ctypes.byref(c_xCoordOfGridCellZero),
-                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(c_nullValue),
-                                               ctypes.byref(c_maxDataValue), ctypes.byref(c_minDataValue),
+                                               ctypes.byref(c_cellSize), ctypes.byref(
+                                                   c_xCoordOfGridCellZero),
+                                               ctypes.byref(c_yCoordOfGridCellZero), ctypes.byref(
+                                                   c_nullValue),
+                                               ctypes.byref(c_maxDataValue), ctypes.byref(
+                                                   c_minDataValue),
                                                ctypes.byref(c_meanDataValue),
                                                c_rangeLimitTable, rangeTablesLength,
                                                c_numberEqualOrExceedingRangeLimit,
@@ -573,7 +615,8 @@ class _Native:
         if numberCurves > 1:
             _values = pd.values.tolist()
             if len(_values[0]) > 1:
-                _values = [[_values[i][j] for i in range(len(_values))] for j in range(len(_values[0]))]
+                _values = [[_values[i][j]
+                            for i in range(len(_values))] for j in range(len(_values[0]))]
             values2 = np.array(_values)
         else:
             values2 = pd.values
@@ -739,7 +782,10 @@ class _Native:
             times: List[int],
             values: List[float],
             arraySize: str,
-            numberValuesRead,
+            cnotesBuffer: str,
+            cnoteSize: int,
+            notes: List[str],
+            numberValuesRead: List[int],
             quality: List[int],
             qualityLength: int,
             julianBaseDate: List[int],
@@ -763,6 +809,8 @@ class _Native:
             POINTER(c_int),  # timeArray
             POINTER(c_double),  # valueArray
             c_int,  # arraySize
+            c_char_p,  # cnotesBuffer
+            c_int,  # cnoteSize
             POINTER(c_int),  # numberValuesRead
             POINTER(c_int),  # quality
             c_int,  # qualityLength
@@ -782,6 +830,8 @@ class _Native:
         c_values = (c_double * arraySize)()
         c_numberValuesRead = c_int(0)
         size = qualityLength * arraySize
+
+        c_cnotesBuffer = create_string_buffer(arraySize * cnoteSize)
 
         c_quality = (c_int * size)()
         c_julianBaseDate = c_int(0)
@@ -809,6 +859,8 @@ class _Native:
             c_times,
             c_values,
             c_arraySize,
+            c_cnotesBuffer,
+            cnoteSize,
             byref(c_numberValuesRead),
             c_quality,
             qualityLength,
@@ -828,6 +880,11 @@ class _Native:
         values.extend(list(c_values[: c_numberValuesRead.value]))
         quality.clear()
         quality.extend(list(c_quality[: c_numberValuesRead.value]))
+        notes.clear()
+        raw = c_cnotesBuffer.raw
+        for i in range(c_numberValuesRead.value):
+            chunk = raw[i * cnoteSize: (i + 1) * cnoteSize]
+            notes.append(chunk.split(b"\x00", 1)[0].decode("utf-8"))
         units[0] = c_units.value.decode("utf-8")
         dataType[0] = c_dataType.value.decode("utf-8")
         julianBaseDate[0] = c_julianBaseDate.value
@@ -843,6 +900,7 @@ class _Native:
             startTime,
             valueArray,
             qualityArray,
+            notes,
             saveAsFloat,
             units,
             dataType,
@@ -860,6 +918,8 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
+            c_char_p,  # cnotes (packed, one '\0' terminated note per value)
+            c_int,  # cnotesLengthTotal
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
@@ -877,6 +937,8 @@ class _Native:
         c_valueArray = (c_double * len(valueArray))(*valueArray)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
+        c_cnotes, c_cnotesLengthTotal = _pack_notes(notes, len(valueArray))
+
         return self.dll.hec_dss_tsStoreRegular(
             self.handle,
             c_pathname,
@@ -886,6 +948,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
+            c_cnotes,
+            c_cnotesLengthTotal,
             int(saveAsFloat),
             c_units,
             c_type,
@@ -901,6 +965,7 @@ class _Native:
             timeGranularitySeconds,
             valueArray,
             qualityArray,
+            notes,
             saveAsFloat,
             units,
             dataType,
@@ -908,8 +973,8 @@ class _Native:
             storageFlag,
     ):
 
-        self.dll.hec_dss_tsStoreIregular.restype = c_int
-        self.dll.hec_dss_tsStoreIregular.argtypes = [
+        self.dll.hec_dss_tsStoreIrregular.restype = c_int
+        self.dll.hec_dss_tsStoreIrregular.argtypes = [
             c_void_p,  # dss (void*)
             c_char_p,  # pathname (const char*)
             c_char_p,  # startDateBase (const char*)
@@ -919,11 +984,13 @@ class _Native:
             c_int,  # valueArraySize (int)
             POINTER(c_int),  # qualityArray (int*)
             c_int,  # qualityArraySize (int)
+            c_char_p,  # cnotes (packed, one '\0' terminated note per value)
+            c_int,  # cnotesLengthTotal
             c_int,  # saveAsFloat (int)
             c_char_p,  # units (const char*)
             c_char_p,  # type (const char*)
             c_char_p,  # timeZoneName (const char*)
-            c_int, # storageFlag (int)
+            c_int,  # storageFlag (int)
         ]
 
         c_pathname = c_char_p(pathname.encode("utf-8"))
@@ -936,7 +1003,9 @@ class _Native:
         c_times = (c_int * len(times))(*times)
         c_qualityArray = (c_int * len(qualityArray))(*qualityArray)
 
-        return self.dll.hec_dss_tsStoreIregular(
+        c_cnotes, c_cnotesLengthTotal = _pack_notes(notes, len(valueArray))
+
+        return self.dll.hec_dss_tsStoreIrregular(
             self.handle,
             c_pathname,
             c_startDateBase,
@@ -946,6 +1015,8 @@ class _Native:
             len(valueArray),
             c_qualityArray,
             len(qualityArray),
+            c_cnotes,
+            c_cnotesLengthTotal,
             int(saveAsFloat),
             c_units,
             c_type,
@@ -1041,7 +1112,6 @@ class _Native:
                 floatValues[:] = np.ctypeslib.as_array(c_floatValues, shape=(len(floatValues),))
             if len(doubleValues) > 0:
                 doubleValues[:] = np.ctypeslib.as_array(c_doubleValues, shape=(len(doubleValues),))
-
 
         else:
             print("Error reading array status = {status}")
@@ -1159,28 +1229,28 @@ class _Native:
         return result
 
     def hec_dss_delete(self, pathname: str) -> int:
-            """
-            Deletes a record from the DSS file.
+        """
+        Deletes a record from the DSS file.
 
-            Args:
-                pathname (str): The pathname of the record to delete.
+        Args:
+            pathname (str): The pathname of the record to delete.
 
-            Returns:
-                int: Status of zero when successful, non-zero on error.
-            """
-            f = self.dll.hec_dss_delete
-            f.argtypes = [
-                c_void_p,  # dss_file* dss
-                c_char_p   # const char* pathname
-            ]
-            f.restype = c_int
+        Returns:
+            int: Status of zero when successful, non-zero on error.
+        """
+        f = self.dll.hec_dss_delete
+        f.argtypes = [
+            c_void_p,  # dss_file* dss
+            c_char_p   # const char* pathname
+        ]
+        f.restype = c_int
 
-            result = f(self.handle, pathname.encode("utf-8"))
+        result = f(self.handle, pathname.encode("utf-8"))
 
-            if result != 0:
-                print("Function call failed with result:", result)
+        if result != 0:
+            print("Function call failed with result:", result)
 
-            return result
+        return result
 
     def hec_dss_textStore(self, pathname, text, length=None):
         """
@@ -1200,12 +1270,12 @@ class _Native:
         f.restype = c_int
 
         result = f(self.handle, pathname.encode("utf-8"),
-                    text.encode("utf-8"), 
-                    length if length is not None else len(text))
-    
+                   text.encode("utf-8"),
+                   length if length is not None else len(text))
+
         return result
-    
-    def hec_dss_textRetrieve(self, pathname, buffer :List[str], buff_size: int) -> int:
+
+    def hec_dss_textRetrieve(self, pathname, buffer: List[str], buff_size: int) -> int:
         """
         Store text data in a DSS file.
         Args:
@@ -1224,8 +1294,8 @@ class _Native:
 
         c_buffer = create_string_buffer(buff_size)
         result = f(self.handle, pathname.encode("utf-8"),
-                    c_buffer, 
-                    buff_size)
-    
+                   c_buffer,
+                   buff_size)
+
         buffer.append(c_buffer.value.decode("utf-8"))
         return result

@@ -7,6 +7,7 @@ class IrregularTimeSeries:
     """ container for time-series data that is not at a consistent interval.
     data is stored internally as a numpy array
     """
+
     def __init__(self):
         """
         Initialize an IrregularTimeSeries object with default values.
@@ -15,6 +16,7 @@ class IrregularTimeSeries:
         self.times = []
         self.values = np.empty(0)
         self.quality = []
+        self.notes: list[str] = []
         self.units = ""
         self.data_type = ""
         self.interval = 0
@@ -25,13 +27,17 @@ class IrregularTimeSeries:
         self.id = ""
         self.location_info = None
 
-    def add_data_point(self, date, value):
+    def add_data_point(self, date, value, flag=None, note=None):
         """
         append a date,value to this time-series
         """
 
         self.times.append(date)
         self.values.append(value)
+        if flag is not None:
+            self.quality.append(flag)
+        if note is not None:
+            self.notes.append(note)
 
     def get_value_at(self, date):
         """
@@ -81,10 +87,17 @@ class IrregularTimeSeries:
         Print the time-series data to the console in a readable format.
         """
         print("dsspath='" + self.id + "'")
-        print("units='"+self.units+"'")
+        print("units='" + self.units + "'")
         print("dataType='" + self.data_type + "'")
-        for time, value in zip(self.times, self.values):
-            print(f"Time: {time}, Value: {value}")
+        has_quality = len(self.quality) > 0
+        has_notes = len(self.notes) > 0
+        for i, (time, value) in enumerate(zip(self.times, self.values)):
+            line = f"Time: {time}, Value: {value}"
+            if has_quality:
+                line += f", Flag: {self.quality[i]}"
+            if has_notes:
+                line += f", Note: {self.notes[i]}"
+            print(line)
 
     def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
         """
@@ -102,7 +115,7 @@ class IrregularTimeSeries:
     def read_csv(file_path: str) -> "IrregularTimeSeries":
         """
         Reads a .csv file and creates an IrregularTimeSeries instance from the data.
-        
+
         Parameters:
             file_path (str): The path to the .csv file to read
 
@@ -113,7 +126,7 @@ class IrregularTimeSeries:
         return timeseries_read_csv(IrregularTimeSeries, file_path)
 
     @staticmethod
-    def create(values, times, quality=[], units="", data_type="", interval=0, start_date="", time_granularity_seconds=1, julian_base_date=None, time_zone_name="", path=None, location_info=None):
+    def create(values, times, quality=[], notes=[], units="", data_type="", interval=0, start_date="", time_granularity_seconds=1, julian_base_date=None, time_zone_name="", path=None, location_info=None):
         """
          Retrieve the value at a specific date in the time-series.
 
@@ -127,6 +140,7 @@ class IrregularTimeSeries:
         irts.times = times
         irts.values = np.array(values)
         irts.quality = quality
+        irts.notes = notes
         irts.units = units
         irts.data_type = data_type
         irts.interval = interval
@@ -134,7 +148,7 @@ class IrregularTimeSeries:
         irts.time_granularity_seconds = time_granularity_seconds
         irts.julian_base_date = 0
         if julian_base_date is None and len(times):
-            irts.julian_base_date = (times[0]-datetime(1900, 1, 1)).days
+            irts.julian_base_date = (times[0] - datetime(1900, 1, 1)).days
         irts.time_zone_name = time_zone_name
         irts.id = path
         irts.location_info = location_info

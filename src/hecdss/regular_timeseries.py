@@ -15,6 +15,7 @@ class RegularTimeSeries:
         self.times = []
         self.values = np.empty(0)
         self.quality = []
+        self.notes: list[str] = []
         self.units = ""
         self.data_type = ""
         self.interval = ""
@@ -25,7 +26,7 @@ class RegularTimeSeries:
         self.id = ""
         self.location_info = None
 
-    def add_data_point(self, date, value, flag=None):
+    def add_data_point(self, date: datetime, value: float, flag: int = None, note: str = None):
         """
         Adds a data point to the time series.
 
@@ -34,10 +35,13 @@ class RegularTimeSeries:
             value (float): The value of the data point.
             flag (int, optional): The quality flag of the data point. Defaults to None.
         """
+        # TODO: Does this let you add a mismatched datetime??
         self.times.append(date)
         self.values.append(value)
         if flag is not None:
             self.quality.append(flag)
+        if note is not None:
+            self.notes.append(note)
 
     def get_value_at(self, date):
         """
@@ -89,13 +93,21 @@ class RegularTimeSeries:
         print("dsspath='" + self.id + "'")
         print("units='" + self.units + "'")
         print("dataType='" + self.data_type + "'")
-        print("Time,Value,Flag")
-        if not len(self.quality) > 0:
-            for time, value in zip(self.times, self.values):
-                print(f"{time}, {value}")
-        else:
-            for time, value, flag in zip(self.times, self.values, self.quality):
-                print(f"{time}, {value}, {flag}")
+        has_quality = len(self.quality) > 0
+        has_notes = len(self.notes) > 0
+        header = "Time,Value"
+        if has_quality:
+            header += ",Flag"
+        if has_notes:
+            header += ",Note"
+        print(header)
+        for i, (time, value) in enumerate(zip(self.times, self.values)):
+            row = f"{time}, {value}"
+            if has_quality:
+                row += f", {self.quality[i]}"
+            if has_notes:
+                row += f", {self.notes[i]}"
+            print(row)
 
     def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
         """
@@ -254,7 +266,7 @@ class RegularTimeSeries:
         return timeseries_read_csv(RegularTimeSeries, file_path)
 
     @staticmethod
-    def create(values, times=[], quality=[], units="", data_type="", interval="", start_date="", time_granularity_seconds=1, julian_base_date=0, time_zone_name="", path=None, location_info=None):
+    def create(values, times=[], quality=[], notes=[], units="", data_type="", interval="", start_date="", time_granularity_seconds=1, julian_base_date=0, time_zone_name="", path=None, location_info=None):
         """
         Creates a new instance of the RegularTimeSeries class with the specified parameters.
 
@@ -278,6 +290,7 @@ class RegularTimeSeries:
         rts.times = [i.replace(microsecond=0) for i in times]
         rts.values = np.array(values)
         rts.quality = quality
+        rts.notes = notes
         rts.units = units
         rts.data_type = data_type
         rts.interval = interval
