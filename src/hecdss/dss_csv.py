@@ -14,9 +14,7 @@ ROUND_PRECISION: int = 4
 DEFAULT_MISSING_VALUE = None
 
 
-def timeseries_to_csv(
-    series: RegularTimeSeries | IrregularTimeSeries, path: str, with_metadata: bool
-) -> None:
+def timeseries_to_csv(series: RegularTimeSeries | IrregularTimeSeries, path: str) -> None:
     """
     Exports a timeseries (either regular or irregular) to a .csv file.
 
@@ -30,17 +28,8 @@ def timeseries_to_csv(
 
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        if with_metadata:
-            id_components: dict[str, str] = _id_to_path_parts(series.id)
-            for letter, value in id_components.items():
-                if letter == 'D':  # Skip D by convention # ts pattern
-                    if value == "ts-pattern":
-                        print("Warning: ts-pattern skipped")
-                    continue
-                writer.writerow([letter, "", "", value])  # Writing metadata rows
-            writer.writerow(["Units", "", "", series.units])
 
-        header: list[str] = ["Type", "Date/Time", series.data_type]
+        header: list[str] = ["Date/Time", "Value"]
 
         has_quality: bool = len(series.quality) > 0
         has_notes: bool = len(series.notes) > 0
@@ -50,14 +39,17 @@ def timeseries_to_csv(
         if has_notes:
             header.append("Notes")
 
+        header.append("Units")
+        header.append("Type")
+        header.append("Path")
+
         writer.writerow(header)
 
         time_format: str = ("%d%b%Y %H%M%S" if _needs_second_precision(series) else "%d%b%Y %H%M")
 
         for i, (time, value) in enumerate(zip(series.times, series.values)):
-            ordinate: str = str(i + 1)
             formatted_time: str = time.strftime(time_format)
-            row: list[str] = [ordinate, formatted_time, value]
+            row: list[str] = [formatted_time, value]
 
             if has_quality:
                 try:
@@ -69,6 +61,12 @@ def timeseries_to_csv(
                     row.append(series.notes[i])
                 except IndexError:
                     row.append(DEFAULT_MISSING_VALUE)
+
+            if i == 0:  # Add metadata to only first row
+                row.append(series.units)
+                row.append(series.data_type)
+                row.append(series.id)
+
             writer.writerow(row)
 
 
@@ -86,72 +84,80 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     if cls not in (RegularTimeSeries, IrregularTimeSeries):
         raise TypeError("cls must be RegularTimeSeries or IrregularTimeSeries")
 
-    times, values, quality, notes, units, data_type = [], [], [], [], "", ""
-    path_parts: dict[str, str] = _empty_path_parts()
+    times, values, quality, notes, units, data_type, id = [], [], [], [], "", "", ""
     column_index: dict[str, int] = {}
 
     with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
+        is_first_data_row: bool = True
         for row in reader:
             if not row:
                 continue
             # first item in the row we grabbed, the first column's item
             first_column_item: str = row[0].strip()
-            # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
-            if first_column_item in path_parts:
-                path_parts[first_column_item] = row[-1].strip()  # last cell in csv row (convention)
-            elif first_column_item == "Units":
-                units = row[-1].strip()
-            elif first_column_item == "Type":  # reached the header
-                if len(row) >= 3:  # ['Type', 'Date/Time', data_type, ...potentially more]
-                    data_type = row[2].strip()
-                # ['Type', 'Date/Time', data_type, 'Quality', 'Notes']
-                column_index = {
-                    name.strip(): i for i, name in enumerate(row) if i >= 3}
-            else:  # Data row
-                if len(row) < 3:
-                    continue  # csv is malformed, something is missing
 
-                raw_time: str = row[1].strip()
-                time_format: str = _get_time_format(raw_time)
-                if time_format is None:
-                    # Time format is unrecognized
-                    continue
+            if first_column_item == "Date/Time":
+                column_index = {name.strip(): i for i, name in enumerate(row)}
+                continue
 
-                roll_day: bool = _need_roll_day(time_format, raw_time)
-                if roll_day:  # 2400 isn't a valid hour, so roll it to 0000 before parsing and add a day after
-                    raw_time = raw_time.replace(" 2400", " 0000")
+            if len(row) < 2:
+                continue  # need at least Date/Time and Value
 
+            if is_first_data_row:
+                is_first_data_row = False
+
+                units_idx: int = column_index.get("Units")
+                if units_idx is not None and len(row) > units_idx:
+                    units = row[units_idx].strip()
+                type_idx: int = column_index.get("Type")
+                if type_idx is not None and len(row) > type_idx:
+                    data_type = row[type_idx].strip()
+                path_idx: int = column_index.get("Path")
+                if path_idx is not None and len(row) > path_idx:
+                    id = row[path_idx].strip()
+
+            time_idx: int = column_index.get("Date/Time")
+            raw_time: str = row[time_idx].strip()
+            time_format: str = _get_time_format(raw_time)
+            if time_format is None:
+                # Time format is unrecognized
+                continue
+
+            roll_day: bool = _need_roll_day(time_format, raw_time)
+            if roll_day:  # 2400 isn't a valid hour, so roll it to 0000 before parsing and add a day after
+                raw_time = raw_time.replace(" 2400", " 0000")
+
+            try:
+                time: datetime = datetime.strptime(raw_time, time_format)
+            except ValueError:
+                continue  # Skip a malformed date
+
+            if roll_day:  # Convert a 24:00 time to 00:00 of the next day
+                time += timedelta(days=1)
+
+            value_idx: int = column_index.get("Value")
+            value_str: str = row[value_idx].strip()
+            try:
+                value: float = float(value_str) if value_str else DEFAULT_MISSING_VALUE
+            except ValueError:
+                value: float = DEFAULT_MISSING_VALUE  # If datetime is valid but not value, use DEFAULT_MISSING_VALUE
+
+            times.append(time)
+            values.append(value)
+
+            quality_idx: int = column_index.get("Quality")
+            if quality_idx is not None:
+                quality_str = row[quality_idx].strip() if len(row) > quality_idx else ""
                 try:
-                    time: datetime = datetime.strptime(raw_time, time_format)
+                    quality.append(int(quality_str) if quality_str else 0)
                 except ValueError:
-                    continue  # Skip a malformed date
+                    quality.append(0)
 
-                if roll_day:  # Convert a 24:00 time to 00:00 of the next day
-                    time += timedelta(days=1)
+            notes_idx: int = column_index.get("Notes")
+            if notes_idx is not None:
+                notes.append(row[notes_idx].strip() if len(row) > notes_idx else "")
 
-                value_str: str = row[2].strip()
-                try:
-                    value: float = float(value_str) if value_str else DEFAULT_MISSING_VALUE
-                except ValueError:
-                    value: float = DEFAULT_MISSING_VALUE  # If datetime is valid but not value, use DEFAULT_MISSING_VALUE
-
-                times.append(time)
-                values.append(value)
-
-                quality_idx = column_index.get("Quality")
-                if quality_idx is not None:
-                    quality_str = row[quality_idx].strip() if len(row) > quality_idx else ""
-                    try:
-                        quality.append(int(quality_str) if quality_str else 0)
-                    except ValueError:
-                        quality.append(0)
-
-                notes_idx = column_index.get("Notes")
-                if notes_idx is not None:
-                    notes.append(row[notes_idx].strip() if len(row) > notes_idx else "")
-
-    id_path: str = _path_parts_to_id(path_parts)
+    path_parts: dict = _id_to_path_parts(id)
     interval: str | int = path_parts["E"]
 
     return cls.create(
@@ -162,7 +168,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
         units=units,
         data_type=data_type,
         interval=interval,
-        path=id_path,
+        path=id or None,
     )
 
 

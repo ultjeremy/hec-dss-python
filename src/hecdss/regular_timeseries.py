@@ -118,7 +118,7 @@ class RegularTimeSeries:
             with_metadata (bool): Whether to include metadata in the exported file.
         """
         from .dss_csv import timeseries_to_csv
-        timeseries_to_csv(self, file_path, with_metadata)
+        timeseries_to_csv(self, file_path)
         print(f"Wrote RegularTimeSeries to .csv file at {file_path}.")
 
     def _get_interval_interval(self):
