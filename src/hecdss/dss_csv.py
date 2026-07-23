@@ -21,7 +21,6 @@ def timeseries_to_csv(series: RegularTimeSeries | IrregularTimeSeries, path: str
     Parameters:
         series: The timeseries object to export. Must be either a RegularTimeSeries or IrregularTimeSeries
         path (str): The file path where the .csv file will be exported.
-        with_metadata (bool): Whether to include metadata in the .csv file.
     """
     if not isinstance(series, (RegularTimeSeries, IrregularTimeSeries)):
         raise TypeError("series must be a RegularTimeSeries or IrregularTimeSeries")
@@ -88,8 +87,11 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     column_index: dict[str, int] = {}
 
     with open(path, "r", newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
         is_first_data_row: bool = True
+        header_detected: bool = False
+
+        reader = csv.reader(f)
+        row: list[str]
         for row in reader:
             if not row:
                 continue
@@ -97,11 +99,15 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
             first_column_item: str = row[0].strip()
 
             if first_column_item == "Date/Time":
+                header_detected = True
                 column_index = {name.strip(): i for i, name in enumerate(row)}
                 continue
 
             if len(row) < 2:
                 continue  # need at least Date/Time and Value
+
+            if not header_detected:
+                raise ValueError("Curve count mismatch!")
 
             if is_first_data_row:
                 is_first_data_row = False
@@ -172,14 +178,13 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
     )
 
 
-def paired_data_to_csv(paired_data: PairedData, path: str, with_metadata: bool) -> None:
+def paired_data_to_csv(paired_data: PairedData, path: str) -> None:
     """
     Exports a PairedData object to a .csv file.
 
     Parameters:
         paired_data (PairedData): Paired Data object to convert to csv.
         path: (str): file path to export csv to.
-        with_metadata (bool): whether or not to include metadata in the csv file.
 
     Returns:
         None
@@ -189,27 +194,29 @@ def paired_data_to_csv(paired_data: PairedData, path: str, with_metadata: bool) 
 
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        if with_metadata:
-            id_components: dict[str, str] = _id_to_path_parts(paired_data.id)
-            for letter, value in id_components.items():
-                if letter == 'D':  # Skipping D by convention
-                    continue
-                writer.writerow([letter, "", value])  # Writing metadata rows
-            labels: list[str] = ["Labels", ""]
-            for label in paired_data.labels:
-                labels.append(label)
-            writer.writerow(labels)
-            writer.writerow(["Units", paired_data.units_independent, paired_data.units_dependent])
-        writer.writerow(["Type", paired_data.type_independent, paired_data.type_dependent])
 
-        counter: int = 1  # 1st column index
+        path_parts: dict = _id_to_path_parts(paired_data.id)
+        c_part: str = path_parts["C"]
+
+        curve_count: int = paired_data.curve_count()
+        header_labels: list[str] = list(paired_data.labels) + [""] * \
+            (curve_count - len(paired_data.labels))
+
+        writer.writerow([_prefix_before_dash(c_part)] + header_labels + ["X Units",
+                        "Y Units", "X Type", "Y Type", "Path"])
+
         x: float  # x is the same as "ordinate"
         y_row: list[float]  # Each y_row is one row of y_values, as paired_data.values is Row-Major
+        is_first_data_row: bool = True
         for x, y_row in zip(paired_data.ordinates, paired_data.values):
             full_row: list[float] = [_round_or_none(x)] + \
                 [_round_or_none(y) for y in y_row]
-            writer.writerow([counter] + full_row)
-            counter += 1
+            if is_first_data_row:
+                is_first_data_row = False
+                full_row.extend([paired_data.units_independent, paired_data.units_dependent,
+                                paired_data.type_independent, paired_data.type_dependent, paired_data.id])
+            writer.writerow(full_row)
+
     return
 
 
@@ -234,58 +241,78 @@ def paired_data_read_csv(cls: type[PairedData], path: str) -> PairedData:
     x_type: str = ""
     y_units: str = ""
     y_type: str = ""
-    path_parts: dict[str, str] = _empty_path_parts()
+    id: str = ""
+    column_index: dict[str, int] = {}
 
     with open(path, "r", newline="", encoding="utf-8") as f:
+        is_first_data_row: bool = True
+        header_detected: bool = False
+
         reader = csv.reader(f)
         row: list[str]
         for row in reader:
             if not row:
                 continue
-            # first item in the row we grabbed, the first column's item
-            first_column_item: str = row[0].strip()
-            # If the first column item is a path component (['A', 'B', 'C', 'D', 'E', 'F'])
-            if first_column_item in path_parts:
-                path_parts[first_column_item] = row[-1].strip()  # last cell in csv row (convention)
-            elif first_column_item == "Labels":
-                for label in row[2:]:  # First two elements of row are not labels
+
+            if row[-1] == "Path":
+                header_detected = True
+                column_index = {name.strip(): i for i, name in enumerate(row)}
+                x_column_name: str = row[0].strip()
+
+                # The index of the x units column is the number of curves + 1 (1 is the x column)
+                x_units_col: int = column_index.get("X Units", len(row) - 5)
+                curve_count: int = x_units_col - 1
+                for label in row[1:x_units_col]:
                     labels.append(label)
-            elif first_column_item == "Units":
-                if len(row) < 2:
-                    continue
-                x_units = row[1].strip()
-                if len(row) < 3:
-                    continue
-                y_units = row[2].strip()  # If units change to a list, will have to update this
-            elif first_column_item == "Type":
-                if len(row) < 2:
-                    continue
-                x_type = row[1].strip()
-                if len(row) < 3:
-                    continue
-                y_type = row[2].strip()  # If type changes to a list, will also have to update this
-            else:  # Data row
-                if len(row) < 3:
-                    continue  # csv is malformed, something is missing
-                x_str: str = row[1].strip()
+                continue
+
+            if len(row) < 2:
+                continue
+
+            if not header_detected:
+                raise ValueError("No header found!")
+
+            if not is_first_data_row and curve_count != len(row) - 1:
+                raise ValueError("Curve count mismatch!")
+
+            if is_first_data_row:
+                is_first_data_row = False
+
+                x_units_idx: int = column_index.get("X Units")
+                if x_units_idx is not None and len(row) > x_units_idx:
+                    x_units = row[x_units_idx].strip()
+                y_units_idx: int = column_index.get("Y Units")
+                if y_units_idx is not None and len(row) > y_units_idx:
+                    y_units = row[y_units_idx].strip()
+                x_type_idx: int = column_index.get("X Type")
+                if x_type_idx is not None and len(row) > x_type_idx:
+                    x_type = row[x_type_idx].strip()
+                y_type_idx: int = column_index.get("Y Type")
+                if y_type_idx is not None and len(row) > y_type_idx:
+                    y_type = row[y_type_idx].strip()
+                path_idx: int = column_index.get("Path")
+                if path_idx is not None and len(row) > path_idx:
+                    id = row[path_idx].strip()
+
+            # If we make it here, we are a data row
+            x_column_idx: int = column_index.get(x_column_name)
+            x_str: str = row[x_column_idx].strip()
+            try:
+                x: float = float(x_str) if x_str else DEFAULT_MISSING_VALUE
+            except ValueError:
+                x: float = DEFAULT_MISSING_VALUE
+            x_values.append(x)
+
+            y_row: list[float] = []
+            y_row_str: list[str] = row[1:curve_count + 1]
+            y_str: str
+            for y_str in y_row_str:
                 try:
-                    x: float = float(x_str) if x_str else DEFAULT_MISSING_VALUE
+                    y: float = float(y_str) if y_str else DEFAULT_MISSING_VALUE
                 except ValueError:
-                    x: float = DEFAULT_MISSING_VALUE
-                x_values.append(x)
-
-                y_row: list[float] = []
-                y_row_str: list[str] = row[2:]
-                y_str: str
-                for y_str in y_row_str:
-                    try:
-                        y: float = float(y_str) if y_str else DEFAULT_MISSING_VALUE
-                    except ValueError:
-                        y: float = DEFAULT_MISSING_VALUE
-                    y_row.append(y)
-                y_values.append(y_row)
-
-    id_path: str = _path_parts_to_id(path_parts)
+                    y: float = DEFAULT_MISSING_VALUE
+                y_row.append(y)
+            y_values.append(y_row)
 
     return cls.create(
         x_values=x_values,
@@ -295,7 +322,7 @@ def paired_data_read_csv(cls: type[PairedData], path: str) -> PairedData:
         x_type=x_type,
         y_units=y_units,
         y_type=y_type,
-        path=id_path,
+        path=id,
     )
 
 
@@ -405,3 +432,16 @@ def _need_roll_day(time_format: str, raw_time: str) -> bool:
         return True
 
     return False
+
+
+def _prefix_before_dash(s: str) -> str:
+    """
+    Helper to determine column name for independent column of PairedData.
+
+    Parameters:
+        s (str): Input string (c-part of path)
+
+    Returns:
+        str: Substring of c-path part that contains independent column name
+    """
+    return s.split("-", 1)[0] if "-" in s else 'X'

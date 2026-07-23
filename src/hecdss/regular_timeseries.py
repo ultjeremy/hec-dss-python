@@ -109,13 +109,12 @@ class RegularTimeSeries:
                 row += f", {self.notes[i]}"
             print(row)
 
-    def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
+    def to_csv(self, file_path: str) -> None:
         """
         Exports the RegularTimeSeries data to a .csv file.
 
         Args:
             file_path (str): The path to the .csv file where the data will be exported.
-            with_metadata (bool): Whether to include metadata in the exported file.
         """
         from .dss_csv import timeseries_to_csv
         timeseries_to_csv(self, file_path)
