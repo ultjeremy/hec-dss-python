@@ -31,16 +31,15 @@ class PairedData:
         # values is ROW-MAJOR, each sublist represents a row of curve values for each ordinate
         return len(self.values[0])
 
-    def to_csv(self, file_path: str, with_metadata: bool = True) -> None:
+    def to_csv(self, file_path: str) -> None:
         """
         Exports the PairedData instance to a .csv file.
 
         Parameters:
             file_path (str): The path to the .csv file where the data will be exported.
-            with_metadata (bool): Whether to include metadata in the exported file.
         """
         from .dss_csv import paired_data_to_csv
-        paired_data_to_csv(self, file_path, with_metadata)
+        paired_data_to_csv(self, file_path)
         print(f"Wrote PairedData to .csv file at {file_path}.")
 
     # def to_data_frame(self, include_index=False):
