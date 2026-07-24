@@ -421,6 +421,23 @@ class TestCSV(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.read_pd_from_string(content)
 
+    def test_read_csv_short_first_row_is_rejected(self):
+        content = (
+            "X,a,b,X Units,Y Units,X Type,Y Type,Path\n"
+            "1,7\n"        # header implies 2 curves, only 1 y-value present
+        )
+        with self.assertRaises(ValueError):
+            self.read_pd_from_string(content)
+
+    def test_read_csv_x_column_name_colliding_with_label(self):
+        content = (
+            "STAGE,STAGE,X Units,Y Units,X Type,Y Type,Path\n"
+            "5,10\n"
+        )
+        pd = self.read_pd_from_string(content)
+        self.assertEqual(pd.ordinates.tolist(), [5.0])
+        self.assertEqual(pd.values.tolist(), [[10.0]])
+
     def test_read_csv_wrong_cls_raises(self):
         """paired_data_read_csv only builds PairedData; other classes are rejected."""
         with self.assertRaises(TypeError):

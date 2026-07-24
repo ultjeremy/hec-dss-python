@@ -107,7 +107,7 @@ def timeseries_read_csv(cls: type[RegularTimeSeries] | type[IrregularTimeSeries]
                 continue  # need at least Date/Time and Value
 
             if not header_detected:
-                raise ValueError("Curve count mismatch!")
+                raise ValueError("No header found!")
 
             if is_first_data_row:
                 is_first_data_row = False
@@ -257,11 +257,11 @@ def paired_data_read_csv(cls: type[PairedData], path: str) -> PairedData:
             if row[-1] == "Path":
                 header_detected = True
                 column_index = {name.strip(): i for i, name in enumerate(row)}
-                x_column_name: str = row[0].strip()
 
                 # The index of the x units column is the number of curves + 1 (1 is the x column)
                 x_units_col: int = column_index.get("X Units", len(row) - 5)
                 curve_count: int = x_units_col - 1
+
                 for label in row[1:x_units_col]:
                     labels.append(label)
                 continue
@@ -277,6 +277,9 @@ def paired_data_read_csv(cls: type[PairedData], path: str) -> PairedData:
 
             if is_first_data_row:
                 is_first_data_row = False
+
+                if len(row) - 1 < curve_count:
+                    raise ValueError("Curve count mismatch!")
 
                 x_units_idx: int = column_index.get("X Units")
                 if x_units_idx is not None and len(row) > x_units_idx:
@@ -295,7 +298,7 @@ def paired_data_read_csv(cls: type[PairedData], path: str) -> PairedData:
                     id = row[path_idx].strip()
 
             # If we make it here, we are a data row
-            x_column_idx: int = column_index.get(x_column_name)
+            x_column_idx: int = 0
             x_str: str = row[x_column_idx].strip()
             try:
                 x: float = float(x_str) if x_str else DEFAULT_MISSING_VALUE
@@ -362,19 +365,6 @@ def _id_to_path_parts(dss_id: str | None) -> dict[str, str]:
     if dss_id:
         return DssPath(dss_id).path_to_dict()
     return _empty_path_parts()
-
-
-def _path_parts_to_id(path_parts: dict[str, str]) -> str:
-    """
-    Rebuilds a '/A/B/C/D/E/F/' DSS id string from its component dict.
-
-    Parameters:
-        path_parts (dict[str, str]): mapping of each path part letter to its value
-
-    Returns:
-        str: the reconstructed DSS pathname
-    """
-    return f"/{path_parts['A']}/{path_parts['B']}/{path_parts['C']}/{path_parts['D']}/{path_parts['E']}/{path_parts['F']}/"
 
 
 def _needs_second_precision(series: RegularTimeSeries | IrregularTimeSeries) -> bool:

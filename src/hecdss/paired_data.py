@@ -37,7 +37,6 @@ class PairedData:
 
         Parameters:
             file_path (str): The path to the .csv file where the data will be exported.
-            with_metadata (bool): Whether to include metadata in the exported file.
         """
         from .dss_csv import paired_data_to_csv
         paired_data_to_csv(self, file_path)
