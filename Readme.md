@@ -122,7 +122,7 @@ The `rts.to_csv` and `RegularTimeSeries.read_csv` methods can be used to convert
   df: pd.DataFrame = pd.read_csv(csv_out) # CSV -> DataFrame
   df_csv_path: str = "df_example.csv"
   # Index needs to be false for round-trip support
-  df.to_csv(df_csv_pathm index=False) # DataFrame -> CSV
+  df.to_csv(df_csv_path, index=False) # DataFrame -> CSV
 
   with HecDss(file_path) as dss:
     RegularTimeSeries.read_csv(df_csv_path) # CSV -> RegularTimeSeries
