@@ -26,7 +26,9 @@ class RegularTimeSeries:
         self.id = ""
         self.location_info = None
 
-    def add_data_point(self, date: datetime, value: float, flag: int = None, note: str = None):
+    def add_data_point(
+        self, date: datetime, value: float, flag: int = None, note: str = None
+    ):
         """
         Adds a data point to the time series.
 
@@ -117,6 +119,7 @@ class RegularTimeSeries:
             file_path (str): The path to the .csv file where the data will be exported.
         """
         from .dss_csv import timeseries_to_csv
+
         timeseries_to_csv(self, file_path)
         print(f"Wrote RegularTimeSeries to .csv file at {file_path}.")
 
@@ -184,9 +187,17 @@ class RegularTimeSeries:
         Args:
             new_interval (int): The new interval in seconds.
         """
-        def is_leap(y): return y % 4 == 0 and y % 100 != 0 or y % 400 == 0
-        def last_day(y, m): return 31 if m in (1, 3, 5, 7, 8, 10, 12) else 30 if m in (
-            4, 6, 9, 11) else 29 if is_leap(y) else 28
+
+        def is_leap(y):
+            return y % 4 == 0 and y % 100 != 0 or y % 400 == 0
+
+        def last_day(y, m):
+            return (
+                31
+                if m in (1, 3, 5, 7, 8, 10, 12)
+                else 30 if m in (4, 6, 9, 11) else 29 if is_leap(y) else 28
+            )
+
         if type(self.start_date) == datetime:
             tz = ZoneInfo(self.time_zone_name) if self.time_zone_name else None
             first_time = self.start_date.replace(microsecond=0, tzinfo=tz)
@@ -238,12 +249,16 @@ class RegularTimeSeries:
         """
         Generates times for the time series based on the interval and start date.
         """
-        if (len(self.times) > 0 and self.start_date == ""):
+        if len(self.times) > 0 and self.start_date == "":
             self.start_date = self.times[0]
 
-        x = [self._get_interval_times(), self._get_interval_path(), self._get_interval_interval()]
+        x = [
+            self._get_interval_times(),
+            self._get_interval_path(),
+            self._get_interval_interval(),
+        ]
         x = [i for i in x if i != "empty"]
-        if (not all(i == x[0] for i in x)):
+        if not all(i == x[0] for i in x):
             raise ValueError("inconsistent interval within arguments")
         elif len(x) != 3 and len(x) != 0:
             self._interval_to_interval(x[0])
@@ -262,10 +277,25 @@ class RegularTimeSeries:
             RegularTimeSeries: A new instance of RegularTimeSeries populated with the data from the .csv file.
         """
         from .dss_csv import timeseries_read_csv
+
         return timeseries_read_csv(RegularTimeSeries, file_path)
 
     @staticmethod
-    def create(values, times=[], quality=[], notes=[], units="", data_type="", interval="", start_date="", time_granularity_seconds=1, julian_base_date=0, time_zone_name="", path=None, location_info=None):
+    def create(
+        values,
+        times=[],
+        quality=[],
+        notes=[],
+        units="",
+        data_type="",
+        interval="",
+        start_date="",
+        time_granularity_seconds=1,
+        julian_base_date=0,
+        time_zone_name="",
+        path=None,
+        location_info=None,
+    ):
         """
         Creates a new instance of the RegularTimeSeries class with the specified parameters.
 
@@ -273,6 +303,7 @@ class RegularTimeSeries:
             values (list): List of data values.
             times (list, optional): List of time values. Defaults to [].
             quality (list, optional): List of quality values. Defaults to [].
+            notes (list[str]): The notes of the time series data.
             units (str, optional): Units of the data. Defaults to "".
             data_type (str, optional): Type of the data. Defaults to "".
             interval (str, optional): Interval of the time series. Defaults to "".

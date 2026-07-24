@@ -33,13 +33,15 @@ pip install hecdss
 ### Regular TimeSeries Data
 - **Stored object in Python**: Regular Timeseries data is stored as 2 arrays of values and times/interval and startdate.
 - **Attributes**: The TimeSeries object has the following attributes:
-  - `start_date`: The start date of the time series data.
-  - `times`: The times of the time series data.
-  - `values`: The values of the time series data.
-  - `interval`: The interval of the time series data.
-  - `data_type`: the dss data type ("PER-AVER","PER-CUM", "INST-VAL", "INST-CUM", .. )
-  - `units`: The units of the time series data.
-  - `id`: The Path of the time series data.
+  - `start_date (str)`: The start date of the time series data.
+  - `times (list[datetime])`: The times of the time series data.
+  - `values (nd.nparray[float])`: The values of the time series data.
+  - `quality (list[int])`: The quality flags of the time series data.
+  - `notes (list[str])`: The notes of the time series data. 
+  - `interval (str)`: The interval of the time series data.
+  - `data_type (str)`: the dss data type ("PER-AVER","PER-CUM", "INST-VAL", "INST-CUM", .. )
+  - `units (str)`: The units of the time series data.
+  - `id (str)`: The Path of the time series data (Format: "/A/B/C/D/E/F/").
   
 ```python
 # example working with time-series data
@@ -60,21 +62,22 @@ with HecDss(file_path) as dss:
 ### Irregular TimeSeries Data
 - **Stored object in Python**: Irregular Timeseries data is stored as 2 arrays of values and times.
 - **Attributes**: The TimeSeries object has the following attributes:
-  - `times`: The times of the time series data.
-  - `values`: The values of the time series data.
+  - `times (list[datetime])`: The times of the time series data.
+  - `values (np.ndarray[float])`: The values of the time series data.
   - `units`: The units of the time series data.
-  - `data_type`: the dss data type ('INST-VAL', 'INST-CUM')
-  - `data`: The time series data.
-  - `id`: The Path of the time series data.
+  - `quality (list[int])`: The quality flags of the time series data.
+  - `notes (list[str])`: The notes of the time series data. 
+  - `data_type (str)`: the dss data type ('INST-VAL', 'INST-CUM')
+  - `id (str)`: The Path of the time series data (Format: "/A/B/C/D/E/F/").
 
 
 ### Paired Data
 - **Stored object in Python**: Paired data stored as aa (x, y) where y could be stored as a 2d numpy matrix.
 - **Attributes**: The PairedData object has the following attributes:
-  - `ordinates`: The x values of the paired data
-  - `values`: y values of the paired data stored as 2d numpy array.
-  - `labels`: The labels of the paired data.
-  - `id`: The Path of the paired data.
+  - `ordinates (np.ndarray)`: The x values of the paired data
+  - `values (np.ndarray[float])`: y values of the paired data stored as 2d numpy array.
+  - `labels (list[str])`: The labels of the paired data.
+  - `id (str)`: The Path of the paired data.
 
 ### Gridded Data
 - **Stored object in Python**: A 2d matrix stored as a numpy 2d object.
@@ -87,6 +90,7 @@ with HecDss(file_path) as dss:
 - * Supports storing and reading arrays of integers, floats, or doubles.
 - * Arrays are managed with ArrayContainer
    
+   
 ```python
   # Example working with an array
   with HecDss("my-dss-file.dss") as dss:
@@ -98,8 +102,33 @@ with HecDss(file_path) as dss:
     read_array = dss.get(array_ints.id)
 ```
 
+## CSV Functionality
 
+### Time Series
+The `rts.to_csv` and `RegularTimeSeries.read_csv` methods can be used to convert time series data to `.csv` format. This can also be utilized alongside `pandas` methods to convert time series data to pandas DataFrames.
 
+```python
+  # Round trip CSV example with RegularTimeSeries and Pandas DataFrame
+  import pandas as pd
+  
+  file_path: str = "my-dss-file.dss"
+  with HecDss(file_path) as dss:
+    data_path: str = "/example/data/////"
+    rts: RegularTimeSeries = dss.get(data_path)
+
+    csv_out: str = "example.csv"
+    rts.to_csv(csv_out) # RegularTimeSeries -> CSV
+
+  df: pd.DataFrame = pd.read_csv(csv_out) # CSV -> DataFrame
+  df_csv_path: str = "df_example.csv"
+  # Index needs to be false for round-trip support
+  df.to_csv(df_csv_pathm index=False) # DataFrame -> CSV
+
+  with HecDss(file_path) as dss:
+    RegularTimeSeries.read_csv(df_csv_path) # CSV -> RegularTimeSeries
+```
+
+Additionally, `IrregularTimeSeries` and `PairedData` both have equivalent functionality with `.csv` conversion.
 
 
 ### This libray is built using the API for future versions of HEC-DSS 
@@ -153,7 +182,6 @@ These are the driving design ideas and goals of the hec-dss-python project (subj
 | hec_dss_native.py | native binding layer   | isolate interactions with low level library(if performance is an issue this Ctypes layer can be replaced )       |
 | hec_dss.py | Programmer entry point ; Python API  | Hides interactions with hec_dss_native, seek to be simple user experience                                        |
 |catalog.py|manage list of DSS objects (catalog) | create condensed catalog perspective                                                                             |
-|Pandas_Series_Utilities.py [future](https://github.com/HydrologicEngineeringCenter/hec-dss-python/issues/8) |NumPy/pandas support | provide features such as dataframes, separate from hec-dss.py; can be developed by different/parallel developers |
 |Easy to get started |nothing to install, just copy python files and shared library   | require minimal privileges to install                                                                            | 
 
 
