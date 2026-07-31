@@ -136,6 +136,7 @@ class TestGriddedData(unittest.TestCase):
         gd_null_int = self._create_half_nul_gd(NULL_INT)
         gd_zero = self._create_half_nul_gd(0)
 
+        assert (gd_nan.numberOfRanges == 2)
         assert (gd_nan.numberOfRanges == gd_negative.numberOfRanges)
         assert (gd_nan.numberOfRanges == gd_null_int.numberOfRanges)
         assert (gd_nan.numberOfRanges == gd_zero.numberOfRanges)
