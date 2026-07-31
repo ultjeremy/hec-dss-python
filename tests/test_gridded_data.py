@@ -9,6 +9,8 @@ from hecdss import HecDss
 from hecdss.gridded_data import GriddedData
 
 
+NULL_INT = -3.4028234663852886e+38
+
 class TestGriddedData(unittest.TestCase):
 
     def setUp(self) -> None:
@@ -124,6 +126,40 @@ class TestGriddedData(unittest.TestCase):
             assert gd_original.numberOfCellsX == gd_readback.numberOfCellsX, "numberOfCellsX mismatch"
             assert gd_original.numberOfCellsY == gd_readback.numberOfCellsY, "numberOfCellsY mismatch"
             assert gd_original.dataUnits == gd_readback.dataUnits, "dataUnits mismatch"
+
+    def test_null_consistency(self):
+        """
+        This test serves to ensure that the range limit table remains consistent with different cases of missing values.
+        """
+        gd_nan = self._create_half_nul_gd(np.nan)
+        gd_negative = self._create_half_nul_gd(-9999)
+        gd_null_int = self._create_half_nul_gd(NULL_INT)
+        gd_zero = self._create_half_nul_gd(0)
+
+        assert (gd_nan.numberOfRanges == 2)
+        assert (gd_nan.numberOfRanges == gd_negative.numberOfRanges)
+        assert (gd_nan.numberOfRanges == gd_null_int.numberOfRanges)
+        assert (gd_nan.numberOfRanges == gd_zero.numberOfRanges)
+
+        assert (gd_nan.maxDataValue == gd_negative.maxDataValue)
+        assert (gd_nan.maxDataValue == gd_null_int.maxDataValue)
+        assert (gd_nan.maxDataValue == gd_zero.maxDataValue)
+
+        assert (gd_nan.minDataValue == gd_negative.minDataValue)
+        assert (gd_nan.minDataValue == gd_null_int.minDataValue)
+        assert (gd_nan.minDataValue == gd_zero.minDataValue)
+
+
+    def _create_half_nul_gd(self, default_value):
+        gd_data = [[1 for _ in range(100)] for _ in range(50)]
+        gd_data.extend([[default_value for _ in range(100)] for _ in range(50)])
+
+        gd_test = GriddedData.create(
+            data=gd_data,
+            nullValue=default_value
+        )
+
+        return gd_test
 
 
 if __name__ == "__main__":
