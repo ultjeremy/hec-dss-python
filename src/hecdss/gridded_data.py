@@ -85,7 +85,7 @@ class GriddedData:
         self.data = np.zeros(0)
         self.location_info = None
 
-    def range_limit_table(self, minval, maxval, range_, bins, datasize, data):
+    def range_limit_table(self, minval, maxval, range_, bins, data):
         """
         Calculate the range limit table and the number of values equal or exceeding each range limit.
 
@@ -94,7 +94,6 @@ class GriddedData:
             maxval (float): Maximum value.
             range_ (float): Range of values.
             bins (int): Number of bins.
-            datasize (int): Size of the data.
             data (numpy.ndarray): Data array.
         """
         max_bins = 15
@@ -103,7 +102,7 @@ class GriddedData:
             bins = max_bins
 
         self.rangeLimitTable = np.empty(bins, dtype=float)
-        self.rangeLimitTable[0] = NULL_INT
+        self.rangeLimitTable[0] = self.nullValue
         self.rangeLimitTable[1] = minval
 
         step = range_ / bins
@@ -118,6 +117,7 @@ class GriddedData:
         """
         Update grid information based on the data array.
         """
+        self.data[self.data == self.nullValue] = np.nan
         self.numberOfCellsX = len(self.data[0])
         self.numberOfCellsY = len(self.data)
         n = np.size(self.data)
@@ -126,10 +126,14 @@ class GriddedData:
         bin_range = int(math.ceil(self.maxDataValue) - math.floor(self.minDataValue))
         self.meanDataValue = np.nanmean(self.data)
 
-        self.data = np.nan_to_num(self.data, nan=NULL_INT)
-        self.numberOfRanges = math.floor(2 + 3.322 * math.log10(n))
+        self.data = np.nan_to_num(self.data, nan=self.nullValue)
+        if bin_range == 0:
+            self.numberOfRanges = 2
+        else:
+            self.numberOfRanges = math.floor(2 + 3.322 * math.log10(n))
         flat_data = self.data.flatten()
-        self.range_limit_table(self.minDataValue, self.maxDataValue, bin_range, self.numberOfRanges, n, flat_data)
+        self.range_limit_table(self.minDataValue, self.maxDataValue,
+                               bin_range, self.numberOfRanges, flat_data)
 
     @staticmethod
     def create(path=None,
@@ -223,7 +227,7 @@ class GriddedData:
         gd.meanDataValue = meanDataValue
         gd.rangeLimitTable = rangeLimitTable
         gd.numberEqualOrExceedingRangeLimit = numberEqualOrExceedingRangeLimit
-        gd.data = np.array(data)
+        gd.data = np.array(data).astype(float)
         gd.location_info = location_info
 
         gd.update_grid_info()
