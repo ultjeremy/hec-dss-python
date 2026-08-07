@@ -1,5 +1,6 @@
 
 from hecdss.catalog import Catalog
+from hecdss.dss_access import DssAccess
 from hecdss.hecdss import HecDss
 from hecdss.dsspath import DssPath
 from hecdss.irregular_timeseries import IrregularTimeSeries
