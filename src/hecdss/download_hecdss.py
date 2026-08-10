@@ -22,7 +22,7 @@ def download_and_unzip(url, zip_file, destination_dir):
     """
     print(url)
     os.makedirs(destination_dir, exist_ok=True)
-    response = requests.get(zip_url, timeout=300)
+    response = requests.get(url, timeout=300)
     if response.status_code == 200:
         zip_file_path = os.path.join(destination_dir, zip_file)
         with open(zip_file_path, "wb") as zip_file:

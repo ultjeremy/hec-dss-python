@@ -1,14 +1,14 @@
 from enum import IntEnum
 
 
-class DssAccess(IntEnum):
-    """DssAccess is an enumeration of the ways a DSS file can be opened
+class OpenAccess(IntEnum):
+    """OpenAccess is an enumeration of the ways a DSS file can be opened
 
     The values match the access argument of hec_dss_open_ex in the HEC-DSS C
     library.
 
     Returns:
-        DssAccess: the access mode
+        OpenAccess: the access mode
     """
 
     GENERAL_ACCESS = 0

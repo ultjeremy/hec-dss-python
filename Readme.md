@@ -15,7 +15,7 @@ pip install hecdss
 [API Documentation](https://hydrologicengineeringcenter.github.io/hec-dss-python/)
 
 ### DSS file methods
-1. `HecDss(file_path: str, access: DssAccess = DssAccess.GENERAL_ACCESS)`: Opens a DSS file located at the provided file path.  See [File Access Modes](#file-access-modes).
+1. `HecDss(file_path: str, access: OpenAccess = OpenAccess.GENERAL_ACCESS)`: Opens a DSS file located at the provided file path.  See [File Access Modes](#file-access-modes).
    
 2. `get(record_path: str)`: Retrieves the record data from the currently opened DSS file of the designated path.
 
@@ -155,7 +155,7 @@ This library uses (`hecdss.dll` on Windows and `libhecdss.so` on Unix/Linux).  h
 `HecDss` takes an optional `access` argument that controls how the DSS file is opened.  These
 modes map directly to the `access` argument of `hec_dss_open_ex` in the HEC-DSS C library.
 
-| `DssAccess` | Value | Description |
+| `OpenAccess` | Value | Description |
 | ----------- | ----- | ----------- |
 | `GENERAL_ACCESS` | 0 | Read, or read/write when the file allows it.  No error when the file does not have write permission.  This is the default. |
 | `READ_ACCESS` | 1 | Read only.  The file must already exist and is never written to, so several processes can read the same file at the same time. |
@@ -164,12 +164,12 @@ modes map directly to the `access` argument of `hec_dss_open_ex` in the HEC-DSS 
 | `EXCLUSIVE_ACCESS` | 4 | Exclusive write, used for squeezing.  Errors when exclusive access is not available. |
 
 ```python
-from hecdss import DssAccess, HecDss
+from hecdss import OpenAccess, HecDss
 
 # open a file read only; several processes can do this at the same time
-with HecDss("example.dss", DssAccess.READ_ACCESS) as dss:
+with HecDss("example.dss", OpenAccess.READ_ACCESS) as dss:
     data = dss.get("/example/data/////")
-    print(dss.access, dss.readonly)  # DssAccess.READ_ACCESS True
+    print(dss.access, dss.readonly)  # OpenAccess.READ_ACCESS True
 ```
 
 A file opened with `READ_ACCESS` must already exist; opening a missing file raises `FileNotFoundError`

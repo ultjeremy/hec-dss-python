@@ -7,7 +7,7 @@ from datetime import datetime
 
 from file_manager import FileManager
 
-from hecdss import DssAccess, HecDss
+from hecdss import HecDss, OpenAccess
 
 
 PATHNAME = "//SACRAMENTO/PRECIP-INC//1Day/OBS/"
@@ -15,10 +15,10 @@ START = datetime(2005, 1, 1)
 END = datetime(2005, 1, 4)
 
 READ_WRITE_ACCESS = [
-    DssAccess.GENERAL_ACCESS,
-    DssAccess.MULTI_USER_ACCESS,
-    DssAccess.SINGLE_USER_ADVISORY_ACCESS,
-    DssAccess.EXCLUSIVE_ACCESS,
+    OpenAccess.GENERAL_ACCESS,
+    OpenAccess.MULTI_USER_ACCESS,
+    OpenAccess.SINGLE_USER_ADVISORY_ACCESS,
+    OpenAccess.EXCLUSIVE_ACCESS,
 ]
 
 PROCESS_COUNT = 4
@@ -36,7 +36,7 @@ def _file_fingerprint(filename):
 def _read_once(filename):
     """Opens filename read-only and returns the values of PATHNAME."""
     HecDss.set_global_debug_level(0)
-    with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+    with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
         return list(dss.get(PATHNAME, START, END).values)
 
 
@@ -48,7 +48,7 @@ def _read_repeatedly(args):
     filename, iterations, expected = args
     HecDss.set_global_debug_level(0)
     matches = 0
-    with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+    with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
         for _ in range(iterations):
             if list(dss.get(PATHNAME, START, END).values) == expected:
                 matches += 1
@@ -79,7 +79,7 @@ class TestAccessModes(unittest.TestCase):
             expected = list(dss.get(PATHNAME, START, END).values)
         self.assertTrue(expected, "test fixture returned no values")
 
-        for access in DssAccess:
+        for access in OpenAccess:
             with self.subTest(access=access.name):
                 # a fresh copy per mode, so a writable mode cannot affect the next
                 filename = self.test_files.get_copy("sample7.dss")
@@ -90,14 +90,14 @@ class TestAccessModes(unittest.TestCase):
         filename = self.test_files.get_copy("sample7.dss")
 
         with HecDss(filename) as dss:
-            self.assertEqual(DssAccess.GENERAL_ACCESS, dss.access)
+            self.assertEqual(OpenAccess.GENERAL_ACCESS, dss.access)
             self.assertFalse(dss.readonly)
 
     def test_access_is_reported_and_plain_ints_are_accepted(self):
         filename = self.test_files.get_copy("sample7.dss")
 
         with HecDss(filename, 1) as dss:
-            self.assertEqual(DssAccess.READ_ACCESS, dss.access)
+            self.assertEqual(OpenAccess.READ_ACCESS, dss.access)
             self.assertTrue(dss.readonly)
 
     def test_invalid_access_raises_value_error(self):
@@ -120,7 +120,7 @@ class TestAccessModes(unittest.TestCase):
                     ts.values = ts.values * 2
                     self.assertEqual(0, dss.put(ts))
 
-                with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+                with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
                     self.assertEqual(expected, list(dss.get(PATHNAME, START, END).values))
 
 
@@ -141,7 +141,7 @@ class TestReadAccess(unittest.TestCase):
         with HecDss(filename) as dss:
             expected_count = dss.record_count()
 
-        with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
             self.assertEqual(expected_count, dss.record_count())
             self.assertTrue(len(dss.get_catalog().uncondensed_paths) > 0)
 
@@ -150,7 +150,7 @@ class TestReadAccess(unittest.TestCase):
         self.assertFalse(os.path.exists(missing))
 
         with self.assertRaises(FileNotFoundError):
-            HecDss(missing, DssAccess.READ_ACCESS)
+            HecDss(missing, OpenAccess.READ_ACCESS)
 
         self.assertFalse(
             os.path.exists(missing),
@@ -172,21 +172,21 @@ class TestReadAccess(unittest.TestCase):
         with HecDss(filename) as dss:
             container = dss.get(PATHNAME, START, END)
 
-        with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
             with self.assertRaises(PermissionError):
                 dss.put(container)
 
     def test_delete_on_readonly_raises(self):
         filename = self.test_files.get_copy("sample7.dss")
 
-        with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
             with self.assertRaises(PermissionError):
                 dss.delete(PATHNAME)
 
     def test_write_precompressed_grid_on_readonly_raises(self):
         filename = self.test_files.get_copy("sample7.dss")
 
-        with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
             with self.assertRaises(PermissionError):
                 dss.writePrecompressedGrid(None, b"\x00", 1)
 
@@ -194,7 +194,7 @@ class TestReadAccess(unittest.TestCase):
         filename = self.test_files.get_copy("sample7.dss")
         before = _file_fingerprint(filename)
 
-        with HecDss(filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(filename, OpenAccess.READ_ACCESS) as dss:
             for _ in range(10):
                 dss.get(PATHNAME, START, END)
 
@@ -204,8 +204,8 @@ class TestReadAccess(unittest.TestCase):
         """Two handles on one file within a single process."""
         filename = self.test_files.get_copy("sample7.dss")
 
-        first = HecDss(filename, DssAccess.READ_ACCESS)
-        second = HecDss(filename, DssAccess.READ_ACCESS)
+        first = HecDss(filename, OpenAccess.READ_ACCESS)
+        second = HecDss(filename, OpenAccess.READ_ACCESS)
         try:
             values_first = list(first.get(PATHNAME, START, END).values)
             values_second = list(second.get(PATHNAME, START, END).values)
@@ -265,7 +265,7 @@ class TestMultiProcessRead(unittest.TestCase):
 
     def test_concurrent_readers_alongside_a_reader_in_this_process(self):
         """A read-only handle here stays usable while workers read the file."""
-        with HecDss(self.filename, DssAccess.READ_ACCESS) as dss:
+        with HecDss(self.filename, OpenAccess.READ_ACCESS) as dss:
             results = _run_workers(_read_once, [self.filename] * PROCESS_COUNT)
             after = list(dss.get(PATHNAME, START, END).values)
 

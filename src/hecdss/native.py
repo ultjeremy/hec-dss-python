@@ -19,7 +19,7 @@ from typing import List
 
 import numpy as np
 
-from hecdss.dss_access import DssAccess
+from hecdss.dss_access import OpenAccess
 
 
 # from hecdss.location_info import LocationInfo
@@ -78,13 +78,13 @@ class _Native:
         else:
             self.dll = self.load_hecdss_library("libhecdss.so")
 
-    def hec_dss_open(self, dss_filename: str, access: int = DssAccess.GENERAL_ACCESS) -> int:
+    def hec_dss_open(self, dss_filename: str, access: int = OpenAccess.GENERAL_ACCESS) -> int:
         """opens a DSS file and gets a handle
 
         Args:
             dss_filename (str): filename to open; it is created if it doesn't
                 exist, except when access is READ_ACCESS.
-            access (int): read/write access used to open the file, see DssAccess
+            access (int): read/write access used to open the file, see OpenAccess
                 0 - GENERAL_ACCESS: Doesn't matter (no error if file doesn't have write permission)
                 1 - READ_ACCESS: Read only (will not allow writing to file)
                 2 - MULTI_USER_ACCESS: Read/Write permission with full multi-user access
@@ -98,13 +98,13 @@ class _Native:
             int: status of zero when successful, non-zero on error.
 
         Raises:
-            ValueError: access is not one of the DssAccess values.
+            ValueError: access is not one of the OpenAccess values.
             FileNotFoundError: READ_ACCESS was requested and the file is missing.
             Exception: the file could not be opened.
         """
-        access = DssAccess(access)
+        access = OpenAccess(access)
 
-        if access == DssAccess.READ_ACCESS and not os.path.exists(dss_filename):
+        if access == OpenAccess.READ_ACCESS and not os.path.exists(dss_filename):
             raise FileNotFoundError(
                 f"DSS file not found: '{dss_filename}'. "
                 f"A file must already exist to be opened with {access.name}."
